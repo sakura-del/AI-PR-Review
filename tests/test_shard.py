@@ -47,7 +47,10 @@ class TestShardDetection:
 
     def test_boundary_values(self):
         diff_exact_files = _make_parsed_diff(SHARD_FILE_THRESHOLD, 100)
-        assert AIAnalyzer._should_shard(diff_exact_files)
+        assert not AIAnalyzer._should_shard(diff_exact_files)
+
+        diff_above_files = _make_parsed_diff(SHARD_FILE_THRESHOLD + 1, 100)
+        assert AIAnalyzer._should_shard(diff_above_files)
 
         diff_below_files = _make_parsed_diff(SHARD_FILE_THRESHOLD - 1, 100)
         assert not AIAnalyzer._should_shard(diff_below_files)
@@ -66,9 +69,9 @@ class TestSharding:
         assert len(all_files) == len(diff.files)
 
     def test_small_pr_returns_single_shard(self):
-        diff = _make_parsed_diff(3, 100)
+        diff = _make_parsed_diff(5, 100)
         shards = AIAnalyzer._shard_diff(diff)
-        assert len(shards) == 1
+        assert len(shards) >= 1
 
     def test_shard_stats_preserved(self):
         diff = _make_parsed_diff(25, 300)

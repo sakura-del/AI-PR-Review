@@ -54,10 +54,14 @@ def _make_small_diff() -> ParsedDiff:
     return ParsedDiff(files=[f], total_additions=10, total_deletions=5)
 
 
+async def _mock_stream_response(items):
+    for item in items:
+        yield item
+
+
 @pytest.mark.asyncio
 async def test_stream_yields_content():
     config = _make_config()
-    analyzer = AIAnalyzer(config=config)
     metadata = _make_metadata()
     diff = _make_small_diff()
 
@@ -65,9 +69,11 @@ async def test_stream_yields_content():
     mock_chunk.choices = [MagicMock()]
     mock_chunk.choices[0].delta.content = "streamed content"
 
-    with patch.object(analyzer._client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = AsyncMock()
-        mock_create.return_value.__aiter__ = AsyncMock(return_value=iter([mock_chunk]))
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response([mock_chunk]))
+
+    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+        analyzer = AIAnalyzer(config=config)
 
         chunks = []
         async for chunk in analyzer.analyze_stream(metadata, diff):
@@ -80,11 +86,15 @@ async def test_stream_yields_content():
 @pytest.mark.asyncio
 async def test_stream_handles_error():
     config = _make_config()
-    analyzer = AIAnalyzer(config=config)
     metadata = _make_metadata()
     diff = _make_small_diff()
 
-    with patch.object(analyzer._client.chat.completions, "create", side_effect=Exception("API error")):
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API error"))
+
+    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+        analyzer = AIAnalyzer(config=config)
+
         chunks = []
         async for chunk in analyzer.analyze_stream(metadata, diff):
             chunks.append(chunk)
@@ -95,16 +105,17 @@ async def test_stream_handles_error():
 @pytest.mark.asyncio
 async def test_stream_empty_response():
     config = _make_config()
-    analyzer = AIAnalyzer(config=config)
     metadata = _make_metadata()
     diff = _make_small_diff()
 
     mock_chunk_empty = MagicMock()
     mock_chunk_empty.choices = []
 
-    with patch.object(analyzer._client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = AsyncMock()
-        mock_create.return_value.__aiter__ = AsyncMock(return_value=iter([mock_chunk_empty]))
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response([mock_chunk_empty]))
+
+    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+        analyzer = AIAnalyzer(config=config)
 
         chunks = []
         async for chunk in analyzer.analyze_stream(metadata, diff):
@@ -116,7 +127,6 @@ async def test_stream_empty_response():
 @pytest.mark.asyncio
 async def test_stream_multiple_chunks():
     config = _make_config()
-    analyzer = AIAnalyzer(config=config)
     metadata = _make_metadata()
     diff = _make_small_diff()
 
@@ -128,9 +138,11 @@ async def test_stream_multiple_chunks():
         mc.choices[0].delta.content = data
         mock_chunks.append(mc)
 
-    with patch.object(analyzer._client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = AsyncMock()
-        mock_create.return_value.__aiter__ = AsyncMock(return_value=iter(mock_chunks))
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response(mock_chunks))
+
+    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+        analyzer = AIAnalyzer(config=config)
 
         collected = []
         async for chunk in analyzer.analyze_stream(metadata, diff):
@@ -143,20 +155,21 @@ async def test_stream_multiple_chunks():
 @pytest.mark.asyncio
 async def test_stream_applies_filters():
     config = _make_config()
-    analyzer = AIAnalyzer(config=config)
     metadata = _make_metadata()
     diff = _make_small_diff()
 
     json_response = '{"summary":{"intent":"test","scope":"small","key_changes":[]},"findings":[{"type":"bug","severity":"low","confidence":2,"expert":"security","file":"x.py","line":1,"title":"Low confidence","description":"","suggestion":"","code_snippet":""}],"suggestions":[]}'
 
     mock_chunks = [MagicMock() for _ in range(2)]
-    for mc in mock_chunks:
+    for i, mc in enumerate(mock_chunks):
         mc.choices = [MagicMock()]
-        mc.choices[0].delta.content = json_response[:len(json_response)//2] if mc == mock_chunks[0] else json_response[len(json_response)//2:]
+        mc.choices[0].delta.content = json_response[:len(json_response)//2] if i == 0 else json_response[len(json_response)//2:]
 
-    with patch.object(analyzer._client.chat.completions, "create", new_callable=AsyncMock) as mock_create:
-        mock_create.return_value = AsyncMock()
-        mock_create.return_value.__aiter__ = AsyncMock(return_value=iter(mock_chunks))
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response(mock_chunks))
+
+    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+        analyzer = AIAnalyzer(config=config)
 
         collected = []
         async for chunk in analyzer.analyze_stream(metadata, diff, severity_threshold="medium"):

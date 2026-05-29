@@ -12,12 +12,16 @@ from ai_pr_review.formatter import format_rich, format_terminal
 
 
 def _make_result(findings_count: int = 3, suggestions_count: int = 2) -> AnalysisResult:
+    experts = ["security", "architecture", "readability", "testing", "performance"]
+    severities = [Severity.HIGH, Severity.MEDIUM, Severity.LOW]
+    types_list = ["bug", "quality", "style", "security", "performance"]
+    
     findings = [
         Finding(
-            type="bug" if i == 0 else "quality",
-            severity=Severity.HIGH if i == 0 else (Severity.MEDIUM if i == 1 else Severity.LOW),
-            confidence=4 - i,
-            expert=["security", "architecture", "readability"][i],
+            type=types_list[i % len(types_list)],
+            severity=severities[i % len(severities)],
+            confidence=max(1, 4 - (i // len(severities))),
+            expert=experts[i % len(experts)],
             file=f"src/module_{i}.py",
             line=(i + 1) * 10,
             title=f"Issue {i+1}",

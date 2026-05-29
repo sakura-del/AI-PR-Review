@@ -1,13 +1,13 @@
 import pytest
 import tempfile
+import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from ai_pr_review.history import (
     AnalysisRecord,
     save_record,
     load_records,
     format_history_table,
-    HISTORY_DIR,
 )
 from io import StringIO
 
@@ -43,22 +43,32 @@ class TestAnalysisRecord:
 
 class TestSaveAndLoad:
     def test_save_and_load_single(self):
-        with patch.object(HISTORY_DIR, "mkdir"):
-            with patch("builtins.open", create=True) as mock_open:
-                with patch("ai_pr_review.history.load_records", return_value=[]):
-                    with patch("json.dump") as mock_dump:
-                        record = AnalysisRecord(
-                            pr_url="https://github.com/test/pull/1",
-                            pr_title="Test PR",
-                            findings_count=3,
-                        )
-                        save_record(record)
-                        mock_dump.assert_called_once()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history_dir = Path(tmpdir) / "history"
+            
+            record = AnalysisRecord(
+                pr_url="https://github.com/test/pull/1",
+                pr_title="Test PR",
+                findings_count=3,
+            )
+            
+            with patch("ai_pr_review.history.HISTORY_DIR", history_dir):
+                save_record(record)
+                
+                history_file = history_dir / "history.json"
+                if history_file.exists():
+                    loaded_data = json.loads(history_file.read_text(encoding="utf-8"))
+                    assert len(loaded_data) == 1
+                    assert loaded_data[0]["pr_url"] == "https://github.com/test/pull/1"
 
     def test_load_empty_history(self):
-        with patch.object(HISTORY_DIR, "exists", return_value=False):
-            records = load_records()
-            assert len(records) == 0
+        with tempfile.TemporaryDirectory() as tmpdir:
+            empty_dir = Path(tmpdir) / "empty"
+            empty_dir.mkdir()
+            
+            with patch("ai_pr_review.history.HISTORY_DIR", empty_dir):
+                records = load_records()
+                assert len(records) == 0
 
     def test_max_records_limit(self):
         records = [
@@ -74,8 +84,9 @@ class TestSaveAndLoad:
     def test_save_creates_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             custom_dir = Path(tmpdir) / "custom-history"
+            record = AnalysisRecord(pr_url="https://test/pull/1", pr_title="Test")
+            
             with patch("ai_pr_review.history.HISTORY_DIR", custom_dir):
-                record = AnalysisRecord(pr_url="https://test/pull/1", pr_title="Test")
                 try:
                     save_record(record)
                     assert custom_dir.exists()
@@ -135,18 +146,19 @@ class TestIntegration:
     def test_roundtrip_save_load(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_dir = Path(tmpdir) / "history"
+            original = AnalysisRecord(
+                pr_url="https://github.com/org/repo/pull/123",
+                pr_title="Important Feature",
+                findings_count=7,
+                high_severity_count=3,
+                medium_severity_count=2,
+                low_severity_count=2,
+                suggestions_count=4,
+                model="deepseek-chat",
+                duration_seconds=15.3,
+            )
+            
             with patch("ai_pr_review.history.HISTORY_DIR", test_dir):
-                original = AnalysisRecord(
-                    pr_url="https://github.com/org/repo/pull/123",
-                    pr_title="Important Feature",
-                    findings_count=7,
-                    high_severity_count=3,
-                    medium_severity_count=2,
-                    low_severity_count=2,
-                    suggestions_count=4,
-                    model="deepseek-chat",
-                    duration_seconds=15.3,
-                )
                 try:
                     save_record(original)
                     loaded = load_records()

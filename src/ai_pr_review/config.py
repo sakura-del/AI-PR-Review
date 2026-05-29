@@ -123,8 +123,14 @@ class ProjectConfig:
 
     def should_ignore(self, file_path: str) -> bool:
         for pattern in self.ignore_paths:
-            if fnmatch.fnmatch(file_path, pattern) or fnmatch.fnmatch(file_path, f"*/{pattern}"):
+            if fnmatch.fnmatch(file_path, pattern):
                 return True
+            if pattern.endswith("/") and (file_path.startswith(pattern) or f"{pattern}" in file_path):
+                return True
+            if "*" in pattern:
+                base_name = file_path.split("/")[-1]
+                if fnmatch.fnmatch(base_name, pattern):
+                    return True
         return False
 
 
