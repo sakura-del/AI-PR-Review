@@ -1,5 +1,6 @@
 import json
 import re
+import asyncio
 import logging
 from openai import AsyncOpenAI
 from ai_pr_review.models import (
@@ -17,6 +18,9 @@ from ai_pr_review.expert_knowledge import select_experts, get_expert_profiles
 from ai_pr_review.prompt_templates import build_analysis_prompt
 
 logger = logging.getLogger(__name__)
+
+SHARD_FILE_THRESHOLD = 20
+SHARD_LINE_THRESHOLD = 5000
 
 
 def parse_ai_response(raw: str) -> AnalysisResult:
@@ -152,3 +156,92 @@ class AIAnalyzer:
 
         result.findings = filtered_findings
         return result
+
+    @staticmethod
+    def _should_shard(parsed_diff: ParsedDiff) -> bool:
+        file_count = len(parsed_diff.files)
+        total_lines = parsed_diff.total_additions + parsed_diff.total_deletions
+        return file_count > SHARD_FILE_THRESHOLD or total_lines > SHARD_LINE_THRESHOLD
+
+    @staticmethod
+    def _shard_diff(parsed_diff: ParsedDiff) -> list[ParsedDiff]:
+        files = parsed_diff.files
+        shard_size = max(1, len(files) // 3)
+        shards = []
+        for i in range(0, len(files), shard_size):
+            shard_files = files[i : i + shard_size]
+            shard_additions = sum(f.additions for f in shard_files)
+            shard_deletions = sum(f.deletions for f in shard_files)
+            shards.append(ParsedDiff(
+                files=shard_files,
+                total_additions=shard_additions,
+                total_deletions=shard_deletions,
+            ))
+        return shards
+
+    async def _analyze_shard(self, pr_metadata: PRMetadata, shard: ParsedDiff, severity_threshold: str, focus: list[str] | None) -> AnalysisResult:
+        context = self._context_builder.build_context(pr_metadata, shard)
+
+        file_paths = [f.path for f in shard.files]
+        hunks_content = "\n".join(h.content for f in shard.files for h in f.hunks)
+        expert_names = select_experts(file_paths, hunks_content)
+        experts = get_expert_profiles(expert_names)
+
+        messages = build_analysis_prompt(
+            pr_context=context.get("pr_metadata", ""),
+            diff_context=context.get("diff", ""),
+            file_context=context.get("file_contents", ""),
+            experts=experts,
+        )
+
+        raw_response = await self._call_ai(messages)
+        result = parse_ai_response(raw_response)
+        result = self._apply_filters(result, severity_threshold, focus)
+        return result
+
+    async def analyze_with_shards(
+        self,
+        pr_metadata: PRMetadata,
+        parsed_diff: ParsedDiff,
+        severity_threshold: str = "low",
+        focus: list[str] | None = None,
+    ) -> AnalysisResult:
+        if not self._should_shard(parsed_diff):
+            return await self.analyze(pr_metadata, parsed_diff, severity_threshold, focus)
+
+        logger.info(f"Large PR detected ({len(parsed_diff.files)} files), sharding analysis")
+        shards = self._shard_diff(parsed_diff)
+        logger.info(f"Split into {len(shards)} shards")
+
+        tasks = [self._analyze_shard(pr_metadata, shard, severity_threshold, focus) for shard in shards]
+        results = await asyncio.gather(*tasks)
+
+        return self._merge_shard_results(results)
+
+    @staticmethod
+    def _merge_shard_results(results: list[AnalysisResult]) -> AnalysisResult:
+        all_findings = []
+        all_suggestions = []
+        key_changes = []
+
+        for result in results:
+            all_findings.extend(result.findings)
+            all_suggestions.extend(result.suggestions)
+            key_changes.extend(result.summary.key_changes)
+
+        all_findings.sort(key=lambda f: (f.file, f.line))
+        deduplicated = []
+        seen = set()
+        for f in all_findings:
+            key = (f.file, f.line, f.title[:50])
+            if key not in seen:
+                seen.add(key)
+                deduplicated.append(f)
+
+        summary = AnalysisSummary(
+            intent=results[0].summary.intent if results else "",
+            scope=f"Merged from {len(results)} shards",
+            key_changes=key_changes[:10],
+        )
+
+        return AnalysisResult(summary=summary, findings=deduplicated, suggestions=all_suggestions)
