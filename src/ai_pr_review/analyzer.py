@@ -133,6 +133,42 @@ class AIAnalyzer:
             logger.error(f"AI API call failed: {e}")
             return ""
 
+    async def analyze_stream(self, pr_metadata: PRMetadata, parsed_diff: ParsedDiff, severity_threshold: str = "low", focus: list[str] | None = None):
+        context = self._context_builder.build_context(pr_metadata, parsed_diff)
+
+        file_paths = [f.path for f in parsed_diff.files]
+        hunks_content = "\n".join(h.content for f in parsed_diff.files for h in f.hunks)
+        expert_names = select_experts(file_paths, hunks_content)
+        experts = get_expert_profiles(expert_names)
+
+        messages = build_analysis_prompt(
+            pr_context=context.get("pr_metadata", ""),
+            diff_context=context.get("diff", ""),
+            file_context=context.get("file_contents", ""),
+            experts=experts,
+        )
+
+        full_response = ""
+        try:
+            stream = await self._client.chat.completions.create(
+                model=self._config.ai.model,
+                messages=messages,
+                max_tokens=self._config.ai.max_tokens,
+                temperature=self._config.ai.temperature,
+                stream=True,
+            )
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    full_response += content
+                    yield content
+        except Exception as e:
+            logger.error(f"Streaming AI call failed: {e}")
+            yield ""
+
+        result = parse_ai_response(full_response)
+        result = self._apply_filters(result, severity_threshold, focus)
+
     def _apply_filters(
         self,
         result: AnalysisResult,
