@@ -1,0 +1,45 @@
+diff --git a/src/auth.py b/src/auth.py
+new file mode 100644
+index 0000000..abc1234
+--- /dev/null
++++ b/src/auth.py
+@@ -0,0 +1,15 @@
++import jwt
++import os
++
++SECRET = "hardcoded-secret"
++
++def generate_token(user_id):
++    payload = {"user_id": user_id}
++    token = jwt.encode(payload, SECRET, algorithm="HS256")
++    return token
++
++def verify_token(token):
++    try:
++        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
++        return payload
++    except jwt.ExpiredSignatureError:
++        return None
++    except jwt.InvalidTokenError:
++        return None
+diff --git a/src/db.py b/src/db.py
+index 1111111..2222222 100644
+--- a/src/db.py
++++ b/src/db.py
+@@ -10,5 +10,8 @@ def get_user(user_id):
+-    query = f"SELECT * FROM users WHERE id = {user_id}"
+-    result = db.execute(query)
++    query = "SELECT * FROM users WHERE id = %s"
++    result = db.execute(query, (user_id,))
+     return result.fetchone()
++
++def delete_user(user_id):
++    query = f"DELETE FROM users WHERE id = {user_id}"
++    db.execute(query)
+diff --git a/package-lock.json b/package-lock.json
+deleted file mode 100644
+index 3333333..0000000
+--- a/package-lock.json
++++ /dev/null
+@@ -1,1000 +0,0 @@
+-...lock content...
