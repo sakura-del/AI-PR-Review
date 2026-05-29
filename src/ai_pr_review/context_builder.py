@@ -45,7 +45,7 @@ class ContextBuilder:
 
     def _build_pr_context(self, metadata: PRMetadata) -> str:
         parts = [
-            f"PR Title: {metadata.title}",
+            f"Title: {metadata.title}",
             f"Author: {metadata.author}",
             f"Branch: {metadata.head_branch} → {metadata.base_branch}",
         ]
@@ -57,20 +57,55 @@ class ContextBuilder:
 
     def _build_diff_context(self, parsed_diff: ParsedDiff) -> str:
         parts = [
-            f"Total changes: +{parsed_diff.total_additions} -{parsed_diff.total_deletions} across {len(parsed_diff.files)} files",
+            f"+{parsed_diff.total_additions} -{parsed_diff.total_deletions} / {len(parsed_diff.files)} files",
             "",
         ]
-        for file_diff in parsed_diff.files:
-            if file_diff.is_binary:
-                continue
-            if file_diff.is_generated:
-                parts.append(f"[SKIPPED: generated] {file_diff.path}")
-                continue
-            parts.append(f"--- {file_diff.path} ({file_diff.change_type.value}) ---")
-            for hunk in file_diff.hunks:
-                parts.append(hunk.content)
+
+        priority_files = sorted(
+            [f for f in parsed_diff.files if not f.is_binary and not f.is_generated],
+            key=lambda f: (f.change_type.value, -len(f.hunks)),
+        )
+
+        available_budget = self._budget - 200
+        used_budget = 0
+
+        for file_diff in priority_files:
+            if used_budget >= available_budget:
+                remaining = len(priority_files) - priority_files.index(file_diff)
+                parts.append(f"... 还有{remaining}个文件(已超出上下文限制)")
+                break
+
+            file_header = f"{file_diff.path} [{file_diff.change_type.value}]"
+            file_content = self._build_file_diff(file_diff)
+            file_tokens = _estimate_tokens(file_content)
+
+            if used_budget + file_tokens > available_budget:
+                parts.append(f"{file_header} (部分)")
+                truncated = self._truncate_hunks(file_diff, available_budget - used_budget)
+                parts.append(truncated)
+                parts.append("")
+                break
+
+            parts.append(file_header)
+            parts.append(file_content)
             parts.append("")
+            used_budget += file_tokens
+
         return "\n".join(parts)
+
+    def _build_file_diff(self, file_diff: FileDiff) -> str:
+        lines = []
+        for hunk in file_diff.hunks:
+            lines.append(hunk.content)
+        return "\n".join(lines)
+
+    def _truncate_hunks(self, file_diff: FileDiff, budget: int) -> str:
+        lines = []
+        for hunk in file_diff.hunks:
+            if _estimate_tokens("\n".join(lines)) + _estimate_tokens(hunk.content) > budget:
+                break
+            lines.append(hunk.content)
+        return "\n".join(lines)
 
     def _build_file_contexts(
         self, parsed_diff: ParsedDiff, budget: int
@@ -96,11 +131,11 @@ class ContextBuilder:
             estimated = _estimate_tokens(content)
             if used + estimated > budget:
                 truncated = content[: (budget - used) * 4]
-                parts.append(f"=== {file_diff.path} (truncated) ===\n{truncated}")
+                parts.append(f"[truncated] {file_diff.path}\n{truncated}")
                 used = budget
                 break
 
-            parts.append(f"=== {file_diff.path} ===\n{content}")
+            parts.append(f"[{file_diff.path}]\n{content}")
             used += estimated
 
         return "\n\n".join(parts)

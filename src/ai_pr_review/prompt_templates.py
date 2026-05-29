@@ -2,84 +2,78 @@ import json
 from ai_pr_review.expert_knowledge import ExpertProfile
 
 
-SYSTEM_PROMPT = """你是一位代码审查专家团队的组织者。你将根据提供的专家知识清单，对Pull Request的代码变更进行专业、深入的审查。
+SYSTEM_PROMPT = """你是一位代码审查专家。根据PR变更进行专业审查。
 
-核心原则：
-1. 每个发现必须关联到具体的代码行号和文件
-2. 每个发现必须给出置信度评分(1-5)和严重级别(high/medium/low)
-3. 每个发现必须映射到某个专家的checklist项
-4. 避免泛泛建议，只报告有实际价值的问题
-5. 不要报告风格偏好问题（如单引号vs双引号）
-6. 不要报告缺少注释等低价值建议
-7. 每个建议必须附带具体的修复代码示例
+规则：
+- 每个发现必须关联具体的文件路径和行号
+- 使用P0-P3严重级别：P0=安全/致命问题(阻止合并), P1=重要问题(合并前修复), P2=代码味道(建议修复), P3=可选优化
+- 每个发现必须包含置信度(1-5)和修复代码示例
+- 忽略：风格偏好、注释缺失、无实际价值的泛泛建议
+- 优先报告：安全问题、逻辑错误、性能问题、测试缺失
 """
 
+
 OUTPUT_SCHEMA = """\
-请严格按照以下JSON格式输出，不要包含任何其他文字：
+输出严格JSON格式（无其他内容）：
 
 ```json
 {
   "summary": {
-    "intent": "本次PR的变更意图（一句话）",
-    "scope": "变更影响范围",
-    "key_changes": ["关键修改点1", "关键修改点2"]
+    "intent": "变更意图",
+    "scope": "影响范围",
+    "changes": ["关键修改点"]
   },
   "findings": [
     {
-      "type": "risk|quality|testing",
-      "severity": "high|medium|low",
+      "severity": "P0|P1|P2|P3",
       "confidence": 1-5,
-      "expert": "security|architecture|performance|readability|testing",
+      "type": "security|logic|performance|quality|testing",
       "file": "文件路径",
       "line": 行号,
-      "title": "发现标题",
-      "description": "详细描述",
-      "suggestion": "修复建议",
-      "code_snippet": "相关代码片段"
+      "title": "问题标题",
+      "description": "问题描述",
+      "fix": "修复代码"
     }
   ],
   "suggestions": [
     {
-      "category": "分类",
-      "priority": "high|medium|low",
-      "description": "改进建议描述",
-      "example": "代码示例"
+      "priority": "P1|P2|P3",
+      "description": "改进建议",
+      "example": "示例代码"
     }
   ]
 }
 ```\
 """
 
-FEW_SHOT_EXAMPLE = """
-示例输出（仅供参考格式）：
+
+FEW_SHOT_EXAMPLE = """\
+示例：
 
 ```json
 {
   "summary": {
-    "intent": "添加JWT认证功能",
+    "intent": "添加JWT认证",
     "scope": "认证模块",
-    "key_changes": ["新增auth.py实现JWT生成和验证", "修改db.py使用参数化查询"]
+    "changes": ["新增auth.py", "修改db.py使用参数化查询"]
   },
   "findings": [
     {
-      "type": "risk",
-      "severity": "high",
+      "severity": "P0",
       "confidence": 5,
-      "expert": "security",
+      "type": "security",
       "file": "auth.py",
       "line": 4,
       "title": "硬编码JWT密钥",
-      "description": "JWT密钥直接硬编码在源代码中，存在泄露风险",
-      "suggestion": "使用环境变量存储密钥",
-      "code_snippet": "SECRET = 'hardcoded-secret'"
+      "description": "密钥硬编码存在泄露风险",
+      "fix": "SECRET = os.environ.get('JWT_SECRET')"
     }
   ],
   "suggestions": [
     {
-      "category": "security",
-      "priority": "high",
-      "description": "将所有敏感配置移至环境变量",
-      "example": "SECRET = os.environ.get('JWT_SECRET')"
+      "priority": "P2",
+      "description": "考虑使用密钥轮换",
+      "example": "from keyring import get_password"
     }
   ]
 }
@@ -88,17 +82,11 @@ FEW_SHOT_EXAMPLE = """
 
 
 def build_expert_context(experts: list[ExpertProfile]) -> str:
-    parts = ["当前启用的审查专家及其检查清单：\n"]
+    parts = ["审查专家清单：\n"]
     for expert in experts:
-        parts.append(f"## {expert.name}")
-        parts.append(f"知识来源：{expert.knowledge_source}")
-        parts.append("\n检查清单：")
+        parts.append(f"[{expert.name}]")
         for item in expert.checklist:
-            parts.append(f"  - {item}")
-        parts.append("\n高风险信号（Red Flags）：")
-        for flag in expert.red_flags:
-            parts.append(f"  - {flag}")
-        parts.append("")
+            parts.append(f"  • {item}")
     return "\n".join(parts)
 
 
@@ -116,9 +104,9 @@ def build_analysis_prompt(
     ]
 
     if file_context:
-        user_content_parts.append("\n## 相关文件内容\n" + file_context)
+        user_content_parts.append("\n## 相关文件\n" + file_context)
 
-    user_content_parts.append("\n## 审查专家\n" + expert_context)
+    user_content_parts.append("\n## 审查规则\n" + expert_context)
     user_content_parts.append("\n" + OUTPUT_SCHEMA)
     user_content_parts.append("\n" + FEW_SHOT_EXAMPLE)
 
