@@ -1,9 +1,16 @@
 import logging
 from ai_pr_review.github_client import GitHubClient
-from ai_pr_review.models import AnalysisResult
+from ai_pr_review.models import AnalysisResult, Severity
 from ai_pr_review.formatter import format_github_comment
 
 logger = logging.getLogger(__name__)
+
+LABEL_RULES = {
+    "ai-review:high-risk": lambda r: any(f.severity == Severity.HIGH for f in r.findings),
+    "ai-review:security": lambda r: any(f.type == "security" or f.expert == "security" for f in r.findings),
+    "ai-review:performance": lambda r: any(f.type == "performance" or f.expert == "performance" for f in r.findings),
+    "ai-review:needs-review": lambda r: len(r.findings) > 0,
+}
 
 
 class Commenter:
@@ -79,3 +86,22 @@ class Commenter:
         except Exception as e:
             logger.error(f"Failed to post review with inline comments: {e}")
             raise
+
+    @staticmethod
+    def _determine_labels(result: AnalysisResult) -> list[str]:
+        labels = []
+        for label, condition in LABEL_RULES.items():
+            if condition(result):
+                labels.append(label)
+        return labels
+
+    def post_labels(self, url: str, result: AnalysisResult):
+        labels = self._determine_labels(result)
+        if not labels:
+            logger.info("No labels to apply")
+            return
+        try:
+            self._client.add_labels(url, labels)
+            logger.info(f"Applied labels to {url}: {labels}")
+        except Exception as e:
+            logger.warning(f"Failed to apply labels: {e}")

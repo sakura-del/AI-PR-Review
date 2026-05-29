@@ -105,3 +105,12 @@ class GitHubClient:
             event=event,
             comments=comments,
         )
+
+    def add_labels(self, url: str, labels: list[str]):
+        owner, repo_name, number = parse_pr_url(url)
+        repo = self._client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(number)
+        existing = {label.name for label in pr.labels}
+        new_labels = [l for l in labels if l not in existing]
+        if new_labels:
+            pr.add_to_labels(*new_labels)
