@@ -1,0 +1,28 @@
+# AI PR Review 项目级配置
+# 放置在仓库根目录，用于自定义审查行为
+
+# 忽略的文件路径（支持 glob 模式）
+ignore_paths:
+  - "*.lock"
+  - "*.generated.*"
+  - "package-lock.json"
+  - "vendor/"
+  - "node_modules/"
+  - "__pycache__/"
+  - "*.min.js"
+  - "*.min.css"
+
+# 自定义审查规则（会追加到系统提示中）
+custom_rules:
+  - "所有新增的 API 端点必须包含认证检查"
+  - "数据库查询必须使用参数化方式，禁止字符串拼接"
+  - "错误信息不得包含敏感数据（如密码、token）"
+
+# 最大上下文文件数量
+max_context_files: 10
+
+# 启用的专家模块（留空则使用默认全部专家）
+enabled_experts:
+  - security
+  - architecture
+  - performance

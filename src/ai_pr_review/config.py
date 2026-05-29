@@ -1,4 +1,5 @@
 import os
+import fnmatch
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -102,5 +103,56 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     config.ai.api_key = os.environ.get("AI_API_KEY", config.ai.api_key)
     config.ai.base_url = os.environ.get("AI_BASE_URL", config.ai.base_url)
     config.ai.model = os.environ.get("AI_MODEL", config.ai.model)
+
+    return config
+
+
+@dataclass
+class ProjectConfig:
+    ignore_paths: list[str] = field(default_factory=lambda: [
+        "*.lock",
+        "*.generated.*",
+        "package-lock.json",
+        "vendor/",
+        "node_modules/",
+        "__pycache__/",
+    ])
+    custom_rules: list[str] = field(default_factory=list)
+    max_context_files: int = 10
+    enabled_experts: list[str] | None = None
+
+    def should_ignore(self, file_path: str) -> bool:
+        for pattern in self.ignore_paths:
+            if fnmatch.fnmatch(file_path, pattern) or fnmatch.fnmatch(file_path, f"*/{pattern}"):
+                return True
+        return False
+
+
+PROJECT_CONFIG_FILENAME = ".ai-pr-review.yaml"
+
+
+def load_project_config(project_dir: Path | None = None) -> ProjectConfig:
+    base_dir = project_dir or Path.cwd()
+    config_path = base_dir / PROJECT_CONFIG_FILENAME
+
+    if not config_path.exists():
+        return ProjectConfig()
+
+    import yaml
+    with open(config_path, "r", encoding="utf-8") as f:
+        try:
+            data = yaml.safe_load(f) or {}
+        except yaml.YAMLError:
+            return ProjectConfig()
+
+    config = ProjectConfig()
+    if "ignore_paths" in data and isinstance(data["ignore_paths"], list):
+        config.ignore_paths = data["ignore_paths"]
+    if "custom_rules" in data and isinstance(data["custom_rules"], list):
+        config.custom_rules = data["custom_rules"]
+    if "max_context_files" in data:
+        config.max_context_files = int(data["max_context_files"])
+    if "enabled_experts" in data and isinstance(data["enabled_experts"], list):
+        config.enabled_experts = data["enabled_experts"]
 
     return config
