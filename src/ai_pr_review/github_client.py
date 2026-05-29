@@ -95,3 +95,13 @@ class GitHubClient:
         repo = self._client.get_repo(f"{owner}/{repo_name}")
         pr = repo.get_pull(number)
         pr.create_review(body=body, event=event)
+
+    def create_review_with_comments(self, url: str, body: str, comments: list[dict], event: str = "COMMENT"):
+        owner, repo_name, number = parse_pr_url(url)
+        repo = self._client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(number)
+        pr.create_review(
+            body=body,
+            event=event,
+            comments=comments,
+        )
