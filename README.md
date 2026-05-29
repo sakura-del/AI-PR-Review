@@ -5,11 +5,17 @@
 ## ✨ 功能特性
 
 - 📋 **PR 变更总结** - 自动生成简洁易懂的 PR 变更摘要
-- ⚠️  **风险识别** - 精准定位代码中的潜在 bug、安全漏洞和性能问题
+- ⚠️  **风险识别** - 精准定位代码中的潜在 bug、安全漏洞和性能问题（P0-P3 严重级别）
 - 💡 **智能建议** - 提供具体的代码改进方案和最佳实践
-- 📝 **GitHub 回写** - 自动将分析结果作为评论发布到 PR
+- 📝 **GitHub 回写** - 自动将分析结果作为行级评论发布到 PR
 - 🔬 **专家知识库** - 内置安全、架构、性能、可读性等专家评审标准
 - 🔧 **灵活配置** - 支持多种国产大模型（DeepSeek、Qwen、GLM等）
+- 🏷️ **自动标签** - 根据分析结果自动标注 `ai-review:high-risk` 等标签
+- 📊 **流式输出** - 打字机效果实时展示分析过程
+- 📈 **历史记录** - 本地保存分析历史，支持按仓库/PR 查询
+- 🧩 **大 PR 分片** - 超 20 文件或 5000 行自动分片并发分析
+- 📐 **Token 预算** - 智能上下文裁剪，优化 token 消耗
+- ⚙️ **项目配置** - `.ai-pr-review.yaml` 支持忽略路径和自定义规则
 
 ## 🚀 快速开始
 
@@ -47,18 +53,44 @@ AI_MODEL=deepseek-chat
 ### 使用
 
 ```bash
-# 模式1: 仅终端输出，不回写 GitHub
-ai-pr-review https://github.com/owner/repo/pull/123 --no-comment
+# 基础分析 + 终端输出 (Rich UI)
+ai-pr-review review https://github.com/owner/repo/pull/123 --no-comment
 
-# 模式2: 分析并回写 GitHub 评论
-ai-pr-review https://github.com/owner/repo/pull/123
+# 流式输出（打字机效果）
+ai-pr-review review https://github.com/owner/repo/pull/123 --stream --no-comment
 
-# 模式3: 只展示中高风险问题
-ai-pr-review https://github.com/owner/repo/pull/123 --severity medium --no-comment
+# 分析并回写 GitHub 评论（含行级评论）
+ai-pr-review review https://github.com/owner/repo/pull/123
 
-# 模式4: 只关注安全问题
-ai-pr-review https://github.com/owner/repo/pull/123 --focus risk,security --no-comment
+# 只展示中高风险问题
+ai-pr-review review https://github.com/owner/repo/pull/123 --severity medium --no-comment
+
+# 只关注安全问题
+ai-pr-review review https://github.com/owner/repo/pull/123 --focus risk,security --no-comment
+
+# 指定模型
+ai-pr-review review https://github.com/owner/repo/pull/123 --model deepseek-chat --no-comment
+
+# 设置 GitHub Review 动作（COMMENT/APPROVE/REQUEST_CHANGES）
+ai-pr-review review https://github.com/owner/repo/pull/123 --review-action REQUEST_CHANGES
+
+# 查看历史分析记录
+ai-pr-review history
+ai-pr-review history --limit 10
 ```
+
+### 命令行参数
+
+| 参数 | 缩写 | 说明 | 默认值 |
+|------|------|------|--------|
+| `--model` | `-m` | AI 模型名称 | deepseek-chat |
+| `--no-comment` | | 不回写 GitHub 评论 | false |
+| `--severity` | `-s` | 最低严重级别过滤 (low/medium/high) | low |
+| `--focus` | `-f` | 分析维度 (risk,quality,testing,security) | 全部 |
+| `--stream` | | 流式输出（打字机效果） | false |
+| `--config` | `-c` | 配置文件路径 | 自动检测 |
+| `--review-action` | | GitHub Review 动作 | COMMENT |
+| `--limit` | `-n` | 历史记录显示数量 (history 子命令) | 20 |
 
 ## 📁 项目结构
 
@@ -67,18 +99,21 @@ AI-PR-Review/
 ├── src/
 │   └── ai_pr_review/
 │       ├── __init__.py          # 包初始化
-│       ├── cli.py               # CLI 入口
-│       ├── config.py            # 配置管理
+│       ├── cli.py               # CLI 入口（Typer）
+│       ├── config.py            # 配置管理 + 项目级配置
 │       ├── github_client.py     # GitHub API 封装
-│       ├── diff_parser.py       # Diff 解析器
-│       ├── context_builder.py   # 上下文构建
-│       ├── expert_knowledge.py  # 专家知识库
-│       ├── prompt_templates.py  # Prompt 模板
-│       ├── analyzer.py          # AI 分析引擎
-│       ├── formatter.py         # 结果格式化
+│       ├── diff_parser.py       # Unified diff 解析器
+│       ├── context_builder.py   # Token 预算管理 + 上下文构建
+│       ├── expert_knowledge.py  # 5 专家 Profile + 动态选择
+│       ├── prompt_templates.py  # 系统提示 + JSON Schema + Few-shot
+│       ├── analyzer.py          # 异步 AI 调用 + 分片分析 + 流式输出
+│       ├── formatter.py         # 终端输出 + Rich UI + GitHub Markdown
+│       ├── commenter.py         # 行级评论 + 标签自动标注
+│       ├── history.py           # 分析历史记录管理
 │       └── models.py            # 数据模型
-├── tests/                       # 单元测试
+├── tests/                       # 单元测试（92 个测试用例）
 ├── docs/                        # 文档
+├── .ai-pr-review.yaml           # 项目级自定义配置
 ├── .env.example                 # 环境变量示例
 ├── .gitignore
 └── pyproject.toml               # 项目配置
@@ -93,7 +128,7 @@ AI-PR-Review/
 | GitHub API | PyGithub |
 | AI API | OpenAI Python SDK (兼容国产模型) |
 | 终端输出 | Rich |
-| HTTP 请求 | Requests |
+| HTTP 请求 | Requests + httpx |
 | Token 计算 | Tiktoken |
 | 环境管理 | python-dotenv |
 
@@ -128,10 +163,21 @@ pytest tests/ -v --cov=ai_pr_review
 2. **GitHub 客户端** - 获取 PR 元数据和 Diff
 3. **Diff 解析器** - 解析 unified diff 为结构化数据
 4. **上下文构建** - 补充代码上下文和 Token 预算管理
-5. **专家知识** - 根据变更类型选择对应专家
+5. **专家知识** - 根据变更类型动态选择对应专家（最多 3 个）
 6. **AI 分析** - 调用大模型进行多维度分析
-7. **格式化** - 终端输出或 GitHub Markdown
-8. **GitHub 回写** - 发布评论到 PR
+7. **格式化** - 终端 Rich UI 或 GitHub Markdown
+8. **GitHub 回写** - 行级评论 + 标签自动标注
+
+### P0-P3 严重级别
+
+借鉴业界代码评审最佳实践，采用 4 级严重级别：
+
+| 级别 | 名称 | 说明 | 操作 |
+|------|------|------|------|
+| **P0** | Critical | 安全漏洞、数据丢失风险、正确性 bug | 必须阻止合并 |
+| **P1** | High | 逻辑错误、SOLID 违规、性能退化 | 合并前修复 |
+| **P2** | Medium | 代码味道、可维护性问题 | 建议修复 |
+| **P3** | Low | 风格、命名、可选优化 | 可选改进 |
 
 ### 模型选择策略
 
@@ -145,15 +191,51 @@ pytest tests/ -v --cov=ai_pr_review
 
 ### 专家知识库
 
-内置5个专家知识领域，基于行业最佳实践：
+内置 5 个专家知识领域，根据 PR 变更内容**动态选择**最相关的 3 个专家：
 
 | 专家 | 检查点 |
 |------|--------|
-| **安全审查专家** | SQL注入、XSS、认证授权、敏感数据、加密、命令注入、CSRF、不安全反序列化、信息泄露 |
-| **架构审查专家** | 单一职责、耦合度、抽象层次、接口设计、依赖注入、错误处理、可扩展性 |
-| **性能审查专家** | N+1查询、内存泄漏、算法复杂度、并发安全、缓存策略、批量操作 |
-| **可读性审查专家** | 命名清晰、函数长度、复杂度、一致性、注释、重复代码、魔法值 |
-| **测试审查专家** | 覆盖率、边界条件、测试隔离、Mock合理性、命名、断言质量 |
+| **安全审查** | SQL注入、XSS、认证授权、敏感数据、加密、命令注入、CSRF、反序列化、信息泄露 |
+| **架构审查** | 单一职责、耦合度、抽象层次、接口设计、依赖注入、错误处理、可扩展性 |
+| **性能审查** | N+1查询、内存泄漏、算法复杂度、并发安全、缓存策略、批量操作 |
+| **可读性审查** | 命名清晰、函数长度、复杂度、一致性、注释、重复代码、魔法值 |
+| **测试审查** | 覆盖率、边界条件、测试隔离、Mock合理性、命名、断言质量 |
+
+### 大 PR 分片分析
+
+当 PR 超过阈值（>20 文件或 >5000 行变更）时自动触发分片：
+
+- 将文件均匀拆分为 3 个分片
+- 每个分片独立分析（并发执行）
+- 合并结果时自动去重和排序
+
+### Token 预算管理
+
+智能上下文裁剪策略，优化 token 消耗：
+
+- 按优先级分配上下文资源：变更代码 > 函数定义 > 文件头 > 关联代码
+- diff 内容按文件优先级裁剪，超出预算时自动截断并提示剩余文件数
+- 专家 checklist 精简为关键词格式，减少约 40% token 消耗
+- 防止 token 超限导致请求失败
+
+### 项目级自定义配置
+
+在项目根目录创建 `.ai-pr-review.yaml`：
+
+```yaml
+ignore_paths:
+  - "*.lock"
+  - "vendor/"
+  - "node_modules/"
+  - "__pycache__/"
+custom_rules:
+  - "禁止使用 any 类型"
+  - "所有公共函数必须有类型注解"
+max_context_files: 10
+enabled_experts:
+  - security
+  - architecture
+```
 
 ## 🎯 核心功能实现
 
@@ -164,11 +246,24 @@ pytest tests/ -v --cov=ai_pr_review
 - **代码行锚定** - 每个发现必须关联到具体代码行
 - **上下文增强** - 提供充分的代码上下文减少误判
 
-### Token 预算管理
+### 行级评论精确回写
 
-- 按优先级分配上下文资源
-- 变更代码 > 函数定义 > 文件头 > 关联代码
-- 防止 token 超限导致请求失败
+使用 PyGithub `create_review(comments=...)` API 一次性提交所有行级评论：
+
+- 每个发现精确定位到文件和行号
+- 评论包含严重级别、问题描述和修复建议
+- 支持 COMMENT / APPROVE / REQUEST_CHANGES 三种 Review 动作
+
+### 自动标签标注
+
+根据分析结果自动添加标签：
+
+| 标签 | 触发条件 |
+|------|----------|
+| `ai-review:high-risk` | 存在高严重级别发现 |
+| `ai-review:security` | 存在安全相关发现 |
+| `ai-review:performance` | 存在性能相关发现 |
+| `ai-review:needs-review` | 存在任何发现 |
 
 ## 🔄 未来扩展方向
 
@@ -188,7 +283,7 @@ pytest tests/ -v --cov=ai_pr_review
 - 视频链接：（待上传到 bilibili/云盘）
 - 演示内容：
   - 工具安装和配置
-  - 4种使用模式的演示
+  - 多种使用模式的演示
   - 真实 PR 的分析结果
   - GitHub 评论回写效果
 
