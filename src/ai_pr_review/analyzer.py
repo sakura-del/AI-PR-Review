@@ -125,6 +125,37 @@ class AIAnalyzer:
 
         return result
 
+    async def analyze_incremental(
+        self,
+        pr_metadata: PRMetadata,
+        incremental_parsed_diff: ParsedDiff,
+        incremental_context: dict,
+        severity_threshold: str = "low",
+        focus: list[str] | None = None,
+    ) -> AnalysisResult:
+        context = self._context_builder.build_context(pr_metadata, incremental_parsed_diff)
+
+        file_paths = [f.path for f in incremental_parsed_diff.files]
+        hunks_content = "\n".join(
+            h.content for f in incremental_parsed_diff.files for h in f.hunks
+        )
+        expert_names = select_experts(file_paths, hunks_content, self._custom_expert_keys)
+        experts = get_expert_profiles(expert_names, self._merged_skills)
+
+        messages = build_analysis_prompt(
+            pr_context=context.get("pr_metadata", ""),
+            diff_context=context.get("diff", ""),
+            file_context=context.get("file_contents", ""),
+            experts=experts,
+            custom_rules=self._custom_rules,
+            incremental_context=incremental_context,
+        )
+
+        raw_response = await self._call_ai(messages)
+        result = parse_ai_response(raw_response)
+        result = self._apply_filters(result, severity_threshold, focus)
+        return result
+
     async def _call_ai(self, messages: list[dict[str, str]]) -> str:
         try:
             response = await self._client.chat.completions.create(

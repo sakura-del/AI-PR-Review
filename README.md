@@ -15,6 +15,7 @@
 - 📈 **历史记录** - 本地保存分析历史，支持按仓库/PR 查询
 - 🧩 **大 PR 分片** - 超 20 文件或 5000 行自动分片并发分析
 - 📐 **Token 预算** - 智能上下文裁剪，优化 token 消耗
+- 🔄 **增量分析** - 仅分析自上次审查以来的新增变更，大幅节省 token
 - ⚙️ **项目配置** - `.ai-pr-review.yaml` 支持忽略路径和自定义规则
 
 ## 🚀 快速开始
@@ -93,6 +94,9 @@ ai-pr-review review https://github.com/owner/repo/pull/123 --model glm-4 --no-co
 # 设置 GitHub Review 动作（COMMENT/APPROVE/REQUEST_CHANGES）
 ai-pr-review review https://github.com/owner/repo/pull/123 --review-action REQUEST_CHANGES
 
+# 增量分析（仅分析自上次审查以来的新增变更，大幅节省 token）
+ai-pr-review review https://github.com/owner/repo/pull/123 --incremental --no-comment
+
 # 查看历史分析记录
 ai-pr-review history
 ai-pr-review history --limit 10
@@ -109,6 +113,7 @@ ai-pr-review history --limit 10
 | `--stream` | | 流式输出（打字机效果） | false |
 | `--config` | `-c` | 配置文件路径 | 自动检测 |
 | `--review-action` | | GitHub Review 动作 | COMMENT |
+| `--incremental` | `-i` | 增量分析（仅分析自上次审查以来的新增变更） | false |
 | `--limit` | `-n` | 历史记录显示数量 (history 子命令) | 20 |
 
 ## 📁 项目结构
@@ -129,8 +134,9 @@ AI-PR-Review/
 │       ├── formatter.py         # 终端输出 + Rich UI + GitHub Markdown
 │       ├── commenter.py         # 行级评论 + 标签自动标注
 │       ├── history.py           # 分析历史记录管理
+│       ├── incremental.py       # 增量分析模块
 │       └── models.py            # 数据模型
-├── tests/                       # 单元测试（92 个测试用例）
+├── tests/                       # 单元测试（123 个测试用例）
 ├── docs/                        # 文档
 ├── .ai-pr-review.yaml           # 项目级自定义配置
 ├── .env.example                 # 环境变量示例
@@ -338,10 +344,8 @@ custom_experts:
 ## 🔄 未来扩展方向
 
 1. **GitHub App 集成** - PR 创建时自动触发审查
-2. **增量分析** - 多次提交时仅分析增量变更
-3. **团队规范学习** - 从历史 PR 评论中学习团队特定标准
-4. **IDE 插件** - VS Code / JetBrains 插件，在 IDE 内直接查看
-5. **自定义专家** - 用户自定义审查标准和 checklist
+2. **团队规范学习** - 从历史 PR 评论中学习团队特定标准
+3. **IDE 插件** - VS Code / JetBrains 插件，在 IDE 内直接查看
 
 ## 📚 相关文档
 

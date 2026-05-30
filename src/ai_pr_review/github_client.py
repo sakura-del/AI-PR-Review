@@ -114,3 +114,29 @@ class GitHubClient:
         new_labels = [l for l in labels if l not in existing]
         if new_labels:
             pr.add_to_labels(*new_labels)
+
+    def get_pr_head_sha(self, url: str) -> str:
+        owner, repo_name, number = parse_pr_url(url)
+        repo = self._client.get_repo(f"{owner}/{repo_name}")
+        pr = repo.get_pull(number)
+        return pr.head.sha
+
+    def get_commit_diff(self, url: str, base_sha: str, head_sha: str) -> str:
+        import requests
+        owner, repo_name, _ = parse_pr_url(url)
+        headers = {"Accept": "application/vnd.github.v3.diff"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        compare_url = f"https://api.github.com/repos/{owner}/{repo_name}/compare/{base_sha}...{head_sha}"
+        response = requests.get(compare_url, headers=headers, timeout=60)
+        response.raise_for_status()
+
+        import json
+        data = response.json()
+        files = data.get("files", [])
+        diff_parts = []
+        for f in files:
+            if f.get("patch"):
+                a_path = f.get("filename", "")
+                diff_parts.append(f"diff --git a/{a_path} b/{a_path}\n{f['patch']}")
+        return "\n".join(diff_parts)

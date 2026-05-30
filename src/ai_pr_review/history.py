@@ -22,6 +22,9 @@ class AnalysisRecord:
     suggestions_count: int = 0
     model: str = ""
     duration_seconds: float = 0.0
+    head_sha: str = ""
+    base_sha: str = ""
+    is_incremental: bool = False
 
     def __post_init__(self):
         if not self.timestamp:
@@ -50,10 +53,24 @@ def load_records() -> list[AnalysisRecord]:
     try:
         with open(history_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return [AnalysisRecord(**item) for item in data]
+        return [_parse_record(item) for item in data]
     except (json.JSONDecodeError, TypeError) as e:
         logger.warning(f"Failed to load history: {e}")
         return []
+
+
+def _parse_record(item: dict) -> AnalysisRecord:
+    known_fields = {f.name for f in AnalysisRecord.__dataclass_fields__.values()}
+    filtered = {k: v for k, v in item.items() if k in known_fields}
+    return AnalysisRecord(**filtered)
+
+
+def find_last_record(pr_url: str) -> AnalysisRecord | None:
+    records = load_records()
+    for r in records:
+        if r.pr_url == pr_url and r.head_sha:
+            return r
+    return None
 
 
 def format_history_table(records: list[AnalysisRecord], limit: int = 20) -> str:
