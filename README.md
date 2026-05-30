@@ -38,17 +38,29 @@ pip install -e ".[dev]"
 
 ### 配置
 
-创建 `.env` 文件（参考 `.env.example`）：
+创建 `.env` 文件（参考 `.env.example`），支持三套模型独立配置：
 
 ```bash
 # GitHub 配置
 GITHUB_TOKEN=ghp_your_github_token
 
-# 模型配置（默认使用 DeepSeek）
-AI_API_KEY=sk_your_deepseek_api_key
-AI_BASE_URL=https://api.deepseek.com/v1
-AI_MODEL=deepseek-chat
+# ===== DeepSeek 模型配置 =====
+DEEPSEEK_API_KEY=sk-your_deepseek_api_key
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_MODEL=deepseek-chat
+
+# ===== Qwen (阿里云) 模型配置 =====
+QWEN_API_KEY=sk-your_dashscope_api_key
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_MODEL=qwen-plus
+
+# ===== GLM (智谱) 模型配置 =====
+GLM_API_KEY=your_zhipu_api_key
+GLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+GLM_MODEL=glm-4
 ```
+
+> 兼容旧版：如果未配置上述预设，仍可使用 `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` 通用键名。
 
 ### 使用
 
@@ -69,7 +81,14 @@ ai-pr-review review https://github.com/owner/repo/pull/123 --severity medium --n
 ai-pr-review review https://github.com/owner/repo/pull/123 --focus risk,security --no-comment
 
 # 指定模型
+# 切换到 DeepSeek
 ai-pr-review review https://github.com/owner/repo/pull/123 --model deepseek-chat --no-comment
+
+# 切换到 Qwen
+ai-pr-review review https://github.com/owner/repo/pull/123 --model qwen-plus --no-comment
+
+# 切换到 GLM
+ai-pr-review review https://github.com/owner/repo/pull/123 --model glm-4 --no-comment
 
 # 设置 GitHub Review 动作（COMMENT/APPROVE/REQUEST_CHANGES）
 ai-pr-review review https://github.com/owner/repo/pull/123 --review-action REQUEST_CHANGES
@@ -83,7 +102,7 @@ ai-pr-review history --limit 10
 
 | 参数 | 缩写 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--model` | `-m` | AI 模型名称 | deepseek-chat |
+| `--model` | `-m` | AI 模型（deepseek/qwen/glm 或完整模型名） | deepseek-chat |
 | `--no-comment` | | 不回写 GitHub 评论 | false |
 | `--severity` | `-s` | 最低严重级别过滤 (low/medium/high) | low |
 | `--focus` | `-f` | 分析维度 (risk,quality,testing,security) | 全部 |
@@ -181,13 +200,28 @@ pytest tests/ -v --cov=ai_pr_review
 
 ### 模型选择策略
 
-支持多种国产大模型，通过统一的 OpenAI 兼容接口：
+支持多种国产大模型，通过统一的 OpenAI 兼容接口。`--model` 参数自动识别 provider 并切换整套配置（API Key + Base URL + 模型名）：
 
-| 模型 | API 端点 | 说明 |
-|------|-----------|------|
-| DeepSeek | https://api.deepseek.com/v1 | 默认推荐，代码能力强 |
-| Qwen (阿里云) | https://dashscope.aliyuncs.com/compatible-mode/v1 | 适合中文项目 |
-| GLM (智谱) | https://open.bigmodel.cn/api/paas/v4 | 综合能力均衡 |
+| 模型 | --model 参数 | API 端点 | .env 键名前缀 |
+|------|-------------|----------|--------------|
+| DeepSeek | `deepseek-chat` | https://api.deepseek.com/v1 | `DEEPSEEK_` |
+| Qwen (阿里云) | `qwen-plus` | https://dashscope.aliyuncs.com/compatible-mode/v1 | `QWEN_` |
+| GLM (智谱) | `glm-4` | https://open.bigmodel.cn/api/paas/v4 | `GLM_` |
+
+切换示例：
+
+```bash
+# 使用 DeepSeek（默认）
+ai-pr-review review https://github.com/owner/repo/pull/123 --model deepseek-chat --no-comment
+
+# 切换到 Qwen
+ai-pr-review review https://github.com/owner/repo/pull/123 --model qwen-plus --no-comment
+
+# 切换到 GLM
+ai-pr-review review https://github.com/owner/repo/pull/123 --model glm-4 --no-comment
+```
+
+> 识别规则：根据模型名前缀自动匹配 provider（如 `deepseek-chat` → `deepseek`，`qwen-plus` → `qwen`），然后从 `.env` 读取对应的 `DEEPSEEK_API_KEY` / `QWEN_API_KEY` / `GLM_API_KEY` 及其 Base URL。
 
 ### 专家知识库
 
