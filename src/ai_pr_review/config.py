@@ -7,6 +7,41 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
+MODEL_PRESETS: dict[str, dict[str, str]] = {
+    "deepseek": {
+        "api_key_env": "DEEPSEEK_API_KEY",
+        "base_url_env": "DEEPSEEK_BASE_URL",
+        "model_env": "DEEPSEEK_MODEL",
+        "default_base_url": "https://api.deepseek.com/v1",
+        "default_model": "deepseek-chat",
+    },
+    "qwen": {
+        "api_key_env": "QWEN_API_KEY",
+        "base_url_env": "QWEN_BASE_URL",
+        "model_env": "QWEN_MODEL",
+        "default_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "default_model": "qwen-plus",
+    },
+    "glm": {
+        "api_key_env": "GLM_API_KEY",
+        "base_url_env": "GLM_BASE_URL",
+        "model_env": "GLM_MODEL",
+        "default_base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "default_model": "glm-4",
+    },
+}
+
+
+def _resolve_provider(model_name: str) -> str | None:
+    if not model_name:
+        return None
+    low = model_name.lower()
+    for provider in MODEL_PRESETS:
+        if low.startswith(provider):
+            return provider
+    return None
+
+
 @dataclass
 class GitHubConfig:
     token: str = ""
@@ -69,7 +104,18 @@ def _load_env_file() -> None:
     load_dotenv(override=False)
 
 
-def load_config(config_path: Path | None = None) -> AppConfig:
+def _load_provider_config(provider: str) -> dict[str, str]:
+    preset = MODEL_PRESETS.get(provider)
+    if not preset:
+        return {}
+    return {
+        "api_key": os.environ.get(preset["api_key_env"], ""),
+        "base_url": os.environ.get(preset["base_url_env"], preset["default_base_url"]),
+        "model": os.environ.get(preset["model_env"], preset["default_model"]),
+    }
+
+
+def load_config(config_path: Path | None = None, model_override: str | None = None) -> AppConfig:
     _load_env_file()
 
     path = config_path or DEFAULT_CONFIG_PATH
@@ -100,9 +146,22 @@ def load_config(config_path: Path | None = None) -> AppConfig:
                     setattr(config.expert, k, v)
 
     config.github.token = os.environ.get("GITHUB_TOKEN", config.github.token)
-    config.ai.api_key = os.environ.get("AI_API_KEY", config.ai.api_key)
-    config.ai.base_url = os.environ.get("AI_BASE_URL", config.ai.base_url)
-    config.ai.model = os.environ.get("AI_MODEL", config.ai.model)
+
+    effective_model = model_override or os.environ.get("AI_MODEL", "") or config.ai.model
+    provider = _resolve_provider(effective_model)
+
+    if provider:
+        provider_cfg = _load_provider_config(provider)
+        if provider_cfg.get("api_key"):
+            config.ai.api_key = provider_cfg["api_key"]
+        if provider_cfg.get("base_url"):
+            config.ai.base_url = provider_cfg["base_url"]
+        config.ai.model = effective_model
+        config.ai.provider = provider
+    else:
+        config.ai.api_key = os.environ.get("AI_API_KEY", config.ai.api_key)
+        config.ai.base_url = os.environ.get("AI_BASE_URL", config.ai.base_url)
+        config.ai.model = effective_model
 
     return config
 

@@ -24,7 +24,7 @@ console = Console()
 @app.command()
 def review(
     pr_url: str = typer.Argument(..., help="GitHub PR URL"),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="AI model name"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="AI model (deepseek/qwen/glm or full model name)"),
     no_comment: bool = typer.Option(False, "--no-comment", help="Do not post GitHub comments"),
     severity: str = typer.Option("low", "--severity", "-s", help="Minimum severity threshold (low/medium/high)"),
     focus: Optional[str] = typer.Option(None, "--focus", "-f", help="Analysis dimensions (comma-separated: risk,quality,testing,security)"),
@@ -32,14 +32,11 @@ def review(
     config_path: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
     review_action: str = typer.Option("COMMENT", "--review-action", help="GitHub review action (COMMENT/APPROVE/REQUEST_CHANGES)"),
 ):
-    config = load_config(Path(config_path) if config_path else None)
-
-    if model:
-        config.ai.model = model
+    config = load_config(Path(config_path) if config_path else None, model_override=model)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
-    console.print(Panel(f"🔍 AI PR Review", subtitle=pr_url))
+    console.print(Panel(f"🔍 AI PR Review", subtitle=f"{pr_url} | model: {config.ai.model}"))
 
     with console.status("Fetching PR metadata..."):
         gh_client = GitHubClient(token=config.github.token)
