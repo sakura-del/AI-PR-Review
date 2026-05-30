@@ -65,6 +65,7 @@ class AnalysisConfig:
     )
     max_file_size: int = 50000
     context_budget: int = 6000
+    min_confidence: int = 2
 
 
 @dataclass

@@ -26,6 +26,9 @@ class ContextBuilder:
         pr_metadata: PRMetadata,
         parsed_diff: ParsedDiff,
     ) -> dict[str, str]:
+        total_lines = parsed_diff.total_additions + parsed_diff.total_deletions
+        if total_lines > 5000:
+            self._budget = max(self._budget, 12000)
         context_parts: dict[str, str] = {}
 
         pr_context = self._build_pr_context(pr_metadata)

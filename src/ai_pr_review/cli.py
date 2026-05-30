@@ -9,7 +9,7 @@ import typer
 from ai_pr_review.config import load_config
 from ai_pr_review.github_client import GitHubClient
 from ai_pr_review.diff_parser import parse_diff
-from ai_pr_review.analyzer import AIAnalyzer
+from ai_pr_review.analyzer import AIAnalyzer, SHARD_FILE_THRESHOLD, SHARD_LINE_THRESHOLD
 from ai_pr_review.formatter import format_terminal
 from ai_pr_review.commenter import Commenter
 from ai_pr_review.history import save_record, load_records, format_history_table, AnalysisRecord
@@ -35,8 +35,10 @@ def review(
     config_path: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
     review_action: str = typer.Option("COMMENT", "--review-action", help="GitHub review action (COMMENT/APPROVE/REQUEST_CHANGES)"),
     incremental: bool = typer.Option(False, "--incremental", "-i", help="Incremental analysis (only new changes since last review)"),
+    min_confidence: int = typer.Option(2, "--min-confidence", help="Minimum confidence threshold (1-5)"),
 ):
     config = load_config(Path(config_path) if config_path else None, model_override=model)
+    config.analysis.min_confidence = min_confidence
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -112,15 +114,34 @@ def review(
         console.print("✅ No new commits since last review.")
         return
     else:
-        with console.status("Analyzing with AI..."):
-            result = asyncio.run(
-                analyzer.analyze(
-                    pr_metadata=pr_metadata,
-                    parsed_diff=parsed_diff,
-                    severity_threshold=severity,
-                    focus=focus_list,
-                )
+        file_count = len(parsed_diff.files)
+        total_lines = parsed_diff.total_additions + parsed_diff.total_deletions
+        should_shard = file_count > SHARD_FILE_THRESHOLD or total_lines > SHARD_LINE_THRESHOLD
+
+        if should_shard:
+            console.print(
+                f"📦 Large PR detected ({file_count} files, {total_lines} lines), "
+                f"sharding analysis..."
             )
+            with console.status("Analyzing with AI (sharded)..."):
+                result = asyncio.run(
+                    analyzer.analyze_with_shards(
+                        pr_metadata=pr_metadata,
+                        parsed_diff=parsed_diff,
+                        severity_threshold=severity,
+                        focus=focus_list,
+                    )
+                )
+        else:
+            with console.status("Analyzing with AI..."):
+                result = asyncio.run(
+                    analyzer.analyze(
+                        pr_metadata=pr_metadata,
+                        parsed_diff=parsed_diff,
+                        severity_threshold=severity,
+                        focus=focus_list,
+                    )
+                )
 
     output = format_terminal(result)
     console.print(output)

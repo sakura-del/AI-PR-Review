@@ -24,6 +24,16 @@ SHARD_FILE_THRESHOLD = 20
 SHARD_LINE_THRESHOLD = 5000
 
 
+def _normalize_severity(value: str) -> Severity:
+    p_map = {"P0": Severity.HIGH, "P1": Severity.MEDIUM, "P2": Severity.MEDIUM, "P3": Severity.LOW}
+    if value in p_map:
+        return p_map[value]
+    try:
+        return Severity(value)
+    except ValueError:
+        return Severity.LOW
+
+
 def parse_ai_response(raw: str) -> AnalysisResult:
     json_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", raw, re.DOTALL)
     if json_match:
@@ -51,7 +61,7 @@ def parse_ai_response(raw: str) -> AnalysisResult:
             findings.append(
                 Finding(
                     type=f.get("type", "quality"),
-                    severity=Severity(f.get("severity", "low")),
+                    severity=_normalize_severity(f.get("severity", "low")),
                     confidence=int(f.get("confidence", 3)),
                     expert=f.get("expert", ""),
                     file=f.get("file", ""),
@@ -71,7 +81,7 @@ def parse_ai_response(raw: str) -> AnalysisResult:
             suggestions.append(
                 Suggestion(
                     category=s.get("category", ""),
-                    priority=Severity(s.get("priority", "low")),
+                    priority=_normalize_severity(s.get("priority", "low")),
                     description=s.get("description", ""),
                     example=s.get("example", ""),
                 )
@@ -124,7 +134,7 @@ class AIAnalyzer:
         raw_response = await self._call_ai(messages)
         result = parse_ai_response(raw_response)
 
-        result = self._apply_filters(result, severity_threshold, focus)
+        result = self._apply_filters(result, severity_threshold, focus, self._config.analysis.min_confidence)
 
         return result
 
@@ -157,7 +167,7 @@ class AIAnalyzer:
 
         raw_response = await self._call_ai(messages)
         result = parse_ai_response(raw_response)
-        result = self._apply_filters(result, severity_threshold, focus)
+        result = self._apply_filters(result, severity_threshold, focus, self._config.analysis.min_confidence)
         return result
 
     def _load_team_rules(self, repo_url: str) -> list:
@@ -220,13 +230,14 @@ class AIAnalyzer:
             yield ""
 
         result = parse_ai_response(full_response)
-        result = self._apply_filters(result, severity_threshold, focus)
+        result = self._apply_filters(result, severity_threshold, focus, self._config.analysis.min_confidence)
 
     def _apply_filters(
         self,
         result: AnalysisResult,
         severity_threshold: str,
         focus: list[str] | None,
+        min_confidence: int = 2,
     ) -> AnalysisResult:
         severity_order = {"low": 0, "medium": 1, "high": 2}
         min_severity = severity_order.get(severity_threshold, 0)
@@ -235,7 +246,7 @@ class AIAnalyzer:
             f
             for f in result.findings
             if severity_order.get(f.severity.value, 0) >= min_severity
-            and f.confidence >= 3
+            and f.confidence >= min_confidence
         ]
 
         if focus:
@@ -286,7 +297,7 @@ class AIAnalyzer:
 
         raw_response = await self._call_ai(messages)
         result = parse_ai_response(raw_response)
-        result = self._apply_filters(result, severity_threshold, focus)
+        result = self._apply_filters(result, severity_threshold, focus, self._config.analysis.min_confidence)
         return result
 
     async def analyze_with_shards(

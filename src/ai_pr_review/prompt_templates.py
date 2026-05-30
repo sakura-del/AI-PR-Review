@@ -36,7 +36,7 @@ OUTPUT_SCHEMA = """\
   "summary": {
     "intent": "变更意图",
     "scope": "影响范围",
-    "changes": ["关键修改点"]
+    "key_changes": ["关键修改点"]
   },
   "findings": [
     {
@@ -70,7 +70,7 @@ FEW_SHOT_EXAMPLE = """\
   "summary": {
     "intent": "添加JWT认证",
     "scope": "认证模块",
-    "changes": ["新增auth.py", "修改db.py使用参数化查询"]
+    "key_changes": ["新增auth.py", "修改db.py使用参数化查询"]
   },
   "findings": [
     {

@@ -1,0 +1,13 @@
+- [x] P0-P3 severity 正确映射到 HIGH/MEDIUM/LOW，findings 不再被静默丢弃
+- [x] parse_ai_response 对 "P0"/"P1"/"P2"/"P3" 和 "high"/"medium"/"low" 两种格式都能正确解析
+- [x] OUTPUT_SCHEMA 中字段名 "key_changes" 与 parse_ai_response 解析一致
+- [x] FEW_SHOT_EXAMPLE 中字段名与 OUTPUT_SCHEMA 一致
+- [x] CLI review 命令对大 PR（>20 文件或 >5000 行变更）自动调用 analyze_with_shards()
+- [x] CLI review 命令对普通 PR 仍调用 analyze()，行为不变
+- [x] 分片分析时终端显示分片进度信息
+- [x] 大 PR（变更行数 >5000）context_budget 自动提升至 12000
+- [x] 普通 PR context_budget 保持默认 6000
+- [x] _apply_filters 使用可配置 min_confidence 阈值（默认 2）替代硬编码 3
+- [x] CLI 新增 --min-confidence 参数
+- [x] 所有现有测试通过，无回归
+- [x] 对目标 PR (556 文件) 执行审查时输出包含"风险识别"和"Review 建议"部分
