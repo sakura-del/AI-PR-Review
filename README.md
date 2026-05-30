@@ -269,7 +269,43 @@ max_context_files: 10
 enabled_experts:
   - security
   - architecture
+
+# 覆盖/扩展内置专家的 checklist 和 red_flags
+expert_overrides:
+  security:
+    checklist_append:              # 追加到原有 checklist
+      - "内部API必须使用mTLS认证"
+      - "禁止在日志中记录PII数据"
+    red_flags_append:
+      - "未经审批的外部服务调用"
+  readability:
+    checklist_replace:             # 完全替换原有 checklist
+      - "遵循公司编码规范v3.2"
+      - "所有public方法必须有文档注释"
+
+# 添加全新自定义专家
+custom_experts:
+  company_compliance:
+    name: "合规审查"
+    knowledge_source: "公司内部合规标准"
+    checklist:
+      - "数据导出必须经过脱敏处理"
+      - "用户数据访问必须有审计日志"
+      - "第三方SDK需通过安全评审"
+    red_flags:
+      - "未经审批的第三方依赖"
+      - "缺少数据分类标注"
 ```
+
+**配置说明**：
+
+| 字段 | 说明 |
+|------|------|
+| `expert_overrides.<key>.checklist_append` | 追加到内置专家的 checklist |
+| `expert_overrides.<key>.checklist_replace` | 完全替换内置专家的 checklist |
+| `expert_overrides.<key>.red_flags_append` | 追加到内置专家的 red_flags |
+| `expert_overrides.<key>.red_flags_replace` | 完全替换内置专家的 red_flags |
+| `custom_experts.<key>` | 添加全新自定义专家（key 为标识符） |
 
 ## 🎯 核心功能实现
 

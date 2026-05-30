@@ -12,9 +12,9 @@ from ai_pr_review.models import (
     Suggestion,
     Severity,
 )
-from ai_pr_review.config import AppConfig
+from ai_pr_review.config import AppConfig, load_project_config
 from ai_pr_review.context_builder import ContextBuilder
-from ai_pr_review.expert_knowledge import select_experts, get_expert_profiles
+from ai_pr_review.expert_knowledge import select_experts, get_expert_profiles, merge_expert_config
 from ai_pr_review.prompt_templates import build_analysis_prompt
 
 logger = logging.getLogger(__name__)
@@ -89,6 +89,10 @@ class AIAnalyzer:
             base_url=config.ai.base_url,
         )
         self._context_builder = ContextBuilder(config, get_file_content_fn)
+        self._project_config = load_project_config()
+        self._merged_skills = merge_expert_config(self._project_config)
+        self._custom_rules = self._project_config.custom_rules
+        self._custom_expert_keys = list(self._project_config.custom_experts.keys())
 
     async def analyze(
         self,
@@ -103,14 +107,15 @@ class AIAnalyzer:
         hunks_content = "\n".join(
             h.content for f in parsed_diff.files for h in f.hunks
         )
-        expert_names = select_experts(file_paths, hunks_content)
-        experts = get_expert_profiles(expert_names)
+        expert_names = select_experts(file_paths, hunks_content, self._custom_expert_keys)
+        experts = get_expert_profiles(expert_names, self._merged_skills)
 
         messages = build_analysis_prompt(
             pr_context=context.get("pr_metadata", ""),
             diff_context=context.get("diff", ""),
             file_context=context.get("file_contents", ""),
             experts=experts,
+            custom_rules=self._custom_rules,
         )
 
         raw_response = await self._call_ai(messages)
@@ -138,14 +143,15 @@ class AIAnalyzer:
 
         file_paths = [f.path for f in parsed_diff.files]
         hunks_content = "\n".join(h.content for f in parsed_diff.files for h in f.hunks)
-        expert_names = select_experts(file_paths, hunks_content)
-        experts = get_expert_profiles(expert_names)
+        expert_names = select_experts(file_paths, hunks_content, self._custom_expert_keys)
+        experts = get_expert_profiles(expert_names, self._merged_skills)
 
         messages = build_analysis_prompt(
             pr_context=context.get("pr_metadata", ""),
             diff_context=context.get("diff", ""),
             file_context=context.get("file_contents", ""),
             experts=experts,
+            custom_rules=self._custom_rules,
         )
 
         full_response = ""
@@ -220,14 +226,15 @@ class AIAnalyzer:
 
         file_paths = [f.path for f in shard.files]
         hunks_content = "\n".join(h.content for f in shard.files for h in f.hunks)
-        expert_names = select_experts(file_paths, hunks_content)
-        experts = get_expert_profiles(expert_names)
+        expert_names = select_experts(file_paths, hunks_content, self._custom_expert_keys)
+        experts = get_expert_profiles(expert_names, self._merged_skills)
 
         messages = build_analysis_prompt(
             pr_context=context.get("pr_metadata", ""),
             diff_context=context.get("diff", ""),
             file_context=context.get("file_contents", ""),
             experts=experts,
+            custom_rules=self._custom_rules,
         )
 
         raw_response = await self._call_ai(messages)

@@ -95,6 +95,7 @@ def build_analysis_prompt(
     diff_context: str,
     file_context: str,
     experts: list[ExpertProfile],
+    custom_rules: list[str] | None = None,
 ) -> list[dict[str, str]]:
     expert_context = build_expert_context(experts)
 
@@ -107,6 +108,11 @@ def build_analysis_prompt(
         user_content_parts.append("\n## 相关文件\n" + file_context)
 
     user_content_parts.append("\n## 审查规则\n" + expert_context)
+
+    if custom_rules:
+        rules_text = "\n".join(f"- {r}" for r in custom_rules)
+        user_content_parts.append("\n## 团队自定义规则\n" + rules_text)
+
     user_content_parts.append("\n" + OUTPUT_SCHEMA)
     user_content_parts.append("\n" + FEW_SHOT_EXAMPLE)
 

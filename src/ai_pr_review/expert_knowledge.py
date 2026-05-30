@@ -1,4 +1,8 @@
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ai_pr_review.config import ProjectConfig
 
 
 @dataclass
@@ -151,7 +155,7 @@ KEYWORD_EXPERT_MAP: dict[str, list[str]] = {
 }
 
 
-def select_experts(file_paths: list[str], hunks_content: str) -> list[str]:
+def select_experts(file_paths: list[str], hunks_content: str, custom_expert_keys: list[str] | None = None) -> list[str]:
     expert_scores: dict[str, int] = {}
     combined = " ".join(file_paths).lower() + " " + hunks_content.lower()
 
@@ -160,6 +164,11 @@ def select_experts(file_paths: list[str], hunks_content: str) -> list[str]:
             for expert in experts:
                 expert_scores[expert] = expert_scores.get(expert, 0) + 1
 
+    if custom_expert_keys:
+        for key in custom_expert_keys:
+            if key not in expert_scores and key not in EXPERT_SKILLS:
+                expert_scores[key] = 1
+
     if not expert_scores:
         return ["readability", "architecture"]
 
@@ -167,5 +176,54 @@ def select_experts(file_paths: list[str], hunks_content: str) -> list[str]:
     return [expert for expert, _ in sorted_experts[:3]]
 
 
-def get_expert_profiles(expert_names: list[str]) -> list[ExpertProfile]:
-    return [EXPERT_SKILLS[name] for name in expert_names if name in EXPERT_SKILLS]
+def get_expert_profiles(expert_names: list[str], skills: dict[str, ExpertProfile] | None = None) -> list[ExpertProfile]:
+    source = skills or EXPERT_SKILLS
+    return [source[name] for name in expert_names if name in source]
+
+
+def merge_expert_config(project_config: "ProjectConfig | None" = None) -> dict[str, ExpertProfile]:
+    merged: dict[str, ExpertProfile] = {}
+    for key, profile in EXPERT_SKILLS.items():
+        merged[key] = ExpertProfile(
+            name=profile.name,
+            checklist=list(profile.checklist),
+            red_flags=list(profile.red_flags),
+            knowledge_source=profile.knowledge_source,
+        )
+
+    if not project_config:
+        return merged
+
+    for key, override in project_config.expert_overrides.items():
+        if key not in merged:
+            continue
+        original = merged[key]
+        checklist = list(original.checklist)
+        red_flags = list(original.red_flags)
+
+        if override.checklist_replace is not None:
+            checklist = list(override.checklist_replace)
+        elif override.checklist_append:
+            checklist.extend(override.checklist_append)
+
+        if override.red_flags_replace is not None:
+            red_flags = list(override.red_flags_replace)
+        elif override.red_flags_append:
+            red_flags.extend(override.red_flags_append)
+
+        merged[key] = ExpertProfile(
+            name=original.name,
+            checklist=checklist,
+            red_flags=red_flags,
+            knowledge_source=original.knowledge_source,
+        )
+
+    for key, expert_data in project_config.custom_experts.items():
+        merged[key] = ExpertProfile(
+            name=expert_data.get("name", key),
+            checklist=expert_data.get("checklist", []),
+            red_flags=expert_data.get("red_flags", []),
+            knowledge_source=expert_data.get("knowledge_source", "自定义"),
+        )
+
+    return merged

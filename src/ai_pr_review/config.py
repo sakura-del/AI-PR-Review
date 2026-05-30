@@ -167,6 +167,14 @@ def load_config(config_path: Path | None = None, model_override: str | None = No
 
 
 @dataclass
+class ExpertOverride:
+    checklist_append: list[str] = field(default_factory=list)
+    checklist_replace: list[str] | None = None
+    red_flags_append: list[str] = field(default_factory=list)
+    red_flags_replace: list[str] | None = None
+
+
+@dataclass
 class ProjectConfig:
     ignore_paths: list[str] = field(default_factory=lambda: [
         "*.lock",
@@ -179,6 +187,8 @@ class ProjectConfig:
     custom_rules: list[str] = field(default_factory=list)
     max_context_files: int = 10
     enabled_experts: list[str] | None = None
+    expert_overrides: dict[str, ExpertOverride] = field(default_factory=dict)
+    custom_experts: dict[str, dict] = field(default_factory=dict)
 
     def should_ignore(self, file_path: str) -> bool:
         for pattern in self.ignore_paths:
@@ -219,5 +229,20 @@ def load_project_config(project_dir: Path | None = None) -> ProjectConfig:
         config.max_context_files = int(data["max_context_files"])
     if "enabled_experts" in data and isinstance(data["enabled_experts"], list):
         config.enabled_experts = data["enabled_experts"]
+
+    if "expert_overrides" in data and isinstance(data["expert_overrides"], dict):
+        for expert_key, override_data in data["expert_overrides"].items():
+            if isinstance(override_data, dict):
+                config.expert_overrides[expert_key] = ExpertOverride(
+                    checklist_append=override_data.get("checklist_append", []),
+                    checklist_replace=override_data.get("checklist_replace"),
+                    red_flags_append=override_data.get("red_flags_append", []),
+                    red_flags_replace=override_data.get("red_flags_replace"),
+                )
+
+    if "custom_experts" in data and isinstance(data["custom_experts"], dict):
+        for expert_key, expert_data in data["custom_experts"].items():
+            if isinstance(expert_data, dict):
+                config.custom_experts[expert_key] = expert_data
 
     return config

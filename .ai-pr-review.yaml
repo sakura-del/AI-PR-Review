@@ -12,7 +12,7 @@ ignore_paths:
   - "*.min.js"
   - "*.min.css"
 
-# 自定义审查规则（会追加到系统提示中）
+# 自定义审查规则（会追加到 prompt 中作为团队规则）
 custom_rules:
   - "所有新增的 API 端点必须包含认证检查"
   - "数据库查询必须使用参数化方式，禁止字符串拼接"
@@ -26,3 +26,33 @@ enabled_experts:
   - security
   - architecture
   - performance
+
+# 覆盖/扩展内置专家的 checklist 和 red_flags
+# checklist_append: 追加到原有 checklist
+# checklist_replace: 完全替换原有 checklist
+# red_flags_append / red_flags_replace: 同理
+expert_overrides:
+  security:
+    checklist_append:
+      - "内部API必须使用mTLS认证"
+      - "禁止在日志中记录PII数据"
+    red_flags_append:
+      - "未经审批的外部服务调用"
+  readability:
+    checklist_replace:
+      - "遵循公司编码规范v3.2"
+      - "所有public方法必须有文档注释"
+
+# 添加全新自定义专家
+# key 为专家标识符，用于关键词匹配和内部引用
+custom_experts:
+  company_compliance:
+    name: "合规审查"
+    knowledge_source: "公司内部合规标准"
+    checklist:
+      - "数据导出必须经过脱敏处理"
+      - "用户数据访问必须有审计日志"
+      - "第三方SDK需通过安全评审"
+    red_flags:
+      - "未经审批的第三方依赖"
+      - "缺少数据分类标注"
