@@ -16,6 +16,7 @@ from ai_pr_review.config import AppConfig, load_project_config
 from ai_pr_review.context_builder import ContextBuilder
 from ai_pr_review.expert_knowledge import select_experts, get_expert_profiles, merge_expert_config
 from ai_pr_review.prompt_templates import build_analysis_prompt
+from ai_pr_review.team_rules import load_team_pattern, merge_team_rules
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def parse_ai_response(raw: str) -> AnalysisResult:
 
 
 class AIAnalyzer:
-    def __init__(self, config: AppConfig, get_file_content_fn=None):
+    def __init__(self, config: AppConfig, get_file_content_fn=None, repo_url: str = ""):
         self._config = config
         self._client = AsyncOpenAI(
             api_key=config.ai.api_key,
@@ -93,6 +94,7 @@ class AIAnalyzer:
         self._merged_skills = merge_expert_config(self._project_config)
         self._custom_rules = self._project_config.custom_rules
         self._custom_expert_keys = list(self._project_config.custom_experts.keys())
+        self._team_rules = self._load_team_rules(repo_url)
 
     async def analyze(
         self,
@@ -116,6 +118,7 @@ class AIAnalyzer:
             file_context=context.get("file_contents", ""),
             experts=experts,
             custom_rules=self._custom_rules,
+            team_rules=self._team_rules if self._team_rules else None,
         )
 
         raw_response = await self._call_ai(messages)
@@ -149,12 +152,25 @@ class AIAnalyzer:
             experts=experts,
             custom_rules=self._custom_rules,
             incremental_context=incremental_context,
+            team_rules=self._team_rules if self._team_rules else None,
         )
 
         raw_response = await self._call_ai(messages)
         result = parse_ai_response(raw_response)
         result = self._apply_filters(result, severity_threshold, focus)
         return result
+
+    def _load_team_rules(self, repo_url: str) -> list:
+        from ai_pr_review.team_learner import TeamRule
+        if not repo_url:
+            return []
+        ttl = self._project_config.team_learning.rule_ttl_days
+        team_pattern = load_team_pattern(repo_url, ttl_days=ttl)
+        if not team_pattern:
+            return []
+        min_weight = self._project_config.team_learning.min_rule_weight
+        rules = merge_team_rules(team_pattern, self._custom_rules)
+        return [r for r in rules if r.weight >= min_weight]
 
     async def _call_ai(self, messages: list[dict[str, str]]) -> str:
         try:

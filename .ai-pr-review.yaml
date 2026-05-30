@@ -56,3 +56,12 @@ custom_experts:
     red_flags:
       - "未经审批的第三方依赖"
       - "缺少数据分类标注"
+
+# 团队规范学习配置
+team_learning:
+  enabled: true
+  max_prs: 20
+  max_comments: 100
+  min_rule_weight: 0.3
+  auto_learn: false
+  rule_ttl_days: 30

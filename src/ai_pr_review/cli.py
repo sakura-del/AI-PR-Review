@@ -14,6 +14,8 @@ from ai_pr_review.formatter import format_terminal
 from ai_pr_review.commenter import Commenter
 from ai_pr_review.history import save_record, load_records, format_history_table, AnalysisRecord
 from ai_pr_review.incremental import IncrementalAnalyzer
+from ai_pr_review.team_learner import TeamLearner
+from ai_pr_review.team_rules import save_team_pattern, load_team_pattern
 
 app = typer.Typer(
     name="ai-pr-review",
@@ -64,6 +66,7 @@ def review(
         get_file_content_fn=lambda url, path, ref: gh_client.get_file_content(
             pr_url, path, pr_metadata.head_branch
         ),
+        repo_url=pr_url,
     )
 
     current_sha = ""
@@ -149,6 +152,51 @@ def review(
         is_incremental=is_incremental_analysis,
     )
     save_record(record)
+
+
+@app.command()
+def learn(
+    pr_url: str = typer.Argument(..., help="GitHub PR URL (用于定位仓库)"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="AI model"),
+    max_prs: int = typer.Option(20, "--max-prs", help="Maximum PRs to analyze"),
+    force: bool = typer.Option(False, "--force", "-f", help="Force re-learn even if cached"),
+):
+    config = load_config(model_override=model)
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    if not force:
+        existing = load_team_pattern(pr_url)
+        if existing and existing.rules:
+            console.print(f"✅ 已有团队模式缓存 (学习于 {existing.learned_at[:19]})")
+            console.print(f"   使用 --force 重新学习")
+            return
+
+    gh_client = GitHubClient(token=config.github.token)
+
+    with console.status("Fetching PR comments..."):
+        comments = gh_client.get_repo_pr_comments(pr_url, max_prs=max_prs)
+    console.print(f"📝 Fetched {len(comments)} comments from {max_prs} PRs")
+
+    if not comments:
+        console.print("[yellow]No comments found in this repository.[/yellow]")
+        return
+
+    with console.status("Learning team patterns..."):
+        learner = TeamLearner(config)
+        pattern = asyncio.run(learner.extract_patterns(comments))
+
+    pattern.repo_url = pr_url
+    save_team_pattern(pattern)
+
+    console.print(f"✅ Learned {len(pattern.rules)} team rules")
+    for rule in pattern.rules:
+        console.print(f"  • [{rule.category}] {rule.description}")
+
+    if pattern.focus_areas:
+        console.print(f"\n🎯 Focus areas: {', '.join(pattern.focus_areas)}")
+    if pattern.common_terms:
+        console.print(f"💬 Common terms: {', '.join(pattern.common_terms[:10])}")
 
 
 @app.command()

@@ -17,6 +17,7 @@
 - 📐 **Token 预算** - 智能上下文裁剪，优化 token 消耗
 - 🔄 **增量分析** - 仅分析自上次审查以来的新增变更，大幅节省 token
 - ⚙️ **项目配置** - `.ai-pr-review.yaml` 支持忽略路径和自定义规则
+- 🧠 **团队规范学习** - 从历史 PR 评论中学习团队审查模式，减少误报
 
 ## 🚀 快速开始
 
@@ -97,6 +98,12 @@ ai-pr-review review https://github.com/owner/repo/pull/123 --review-action REQUE
 # 增量分析（仅分析自上次审查以来的新增变更，大幅节省 token）
 ai-pr-review review https://github.com/owner/repo/pull/123 --incremental --no-comment
 
+# 学习团队审查模式（从历史 PR 评论中提取规则）
+ai-pr-review learn https://github.com/owner/repo/pull/123
+
+# 强制重新学习（忽略缓存）
+ai-pr-review learn https://github.com/owner/repo/pull/123 --force
+
 # 查看历史分析记录
 ai-pr-review history
 ai-pr-review history --limit 10
@@ -115,6 +122,8 @@ ai-pr-review history --limit 10
 | `--review-action` | | GitHub Review 动作 | COMMENT |
 | `--incremental` | `-i` | 增量分析（仅分析自上次审查以来的新增变更） | false |
 | `--limit` | `-n` | 历史记录显示数量 (history 子命令) | 20 |
+| `--max-prs` | | 学习时分析的最大 PR 数量 (learn 子命令) | 20 |
+| `--force` | `-f` | 强制重新学习，忽略缓存 (learn 子命令) | false |
 
 ## 📁 项目结构
 
@@ -135,6 +144,8 @@ AI-PR-Review/
 │       ├── commenter.py         # 行级评论 + 标签自动标注
 │       ├── history.py           # 分析历史记录管理
 │       ├── incremental.py       # 增量分析模块
+│       ├── team_learner.py      # 团队规范学习（AI 模式提取）
+│       ├── team_rules.py        # 团队规则存储与合并
 │       └── models.py            # 数据模型
 ├── tests/                       # 单元测试（123 个测试用例）
 ├── docs/                        # 文档
@@ -301,6 +312,15 @@ custom_experts:
     red_flags:
       - "未经审批的第三方依赖"
       - "缺少数据分类标注"
+
+# 团队规范学习配置
+team_learning:
+  enabled: true           # 启用团队规范学习
+  max_prs: 20             # 最多分析多少个历史 PR
+  max_comments: 100       # 最多提取多少条评论
+  min_rule_weight: 0.3    # 最低规则权重阈值
+  auto_learn: false       # 是否在每次审查后自动学习
+  rule_ttl_days: 30       # 学习规则的过期天数
 ```
 
 **配置说明**：
@@ -312,6 +332,10 @@ custom_experts:
 | `expert_overrides.<key>.red_flags_append` | 追加到内置专家的 red_flags |
 | `expert_overrides.<key>.red_flags_replace` | 完全替换内置专家的 red_flags |
 | `custom_experts.<key>` | 添加全新自定义专家（key 为标识符） |
+| `team_learning.enabled` | 启用团队规范学习 |
+| `team_learning.max_prs` | 学习时分析的最大 PR 数量 |
+| `team_learning.min_rule_weight` | 最低规则权重阈值（低于此值的规则被过滤） |
+| `team_learning.rule_ttl_days` | 学习规则过期天数（过期后需重新学习） |
 
 ## 🎯 核心功能实现
 
@@ -341,11 +365,31 @@ custom_experts:
 | `ai-review:performance` | 存在性能相关发现 |
 | `ai-review:needs-review` | 存在任何发现 |
 
+### 团队规范学习
+
+从仓库历史 PR 评论中提取团队审查模式，自动生成个性化审查规则：
+
+**工作流程**：
+1. `ai-pr-review learn <url>` 采集仓库最近 N 个 PR 的评论
+2. AI 分析评论内容，提取团队反复关注的审查规则
+3. 规则持久化存储到本地（`~/.ai-pr-review/team_rules/`）
+4. 后续 `review` 命令自动加载团队规则，注入分析 prompt
+
+**规则权重系统**：
+- 学习规则权重由出现频率决定（0.3-2.0）
+- 手动规则权重固定为 1.5（高于学习规则）
+- 低于 `min_rule_weight` 的规则自动过滤
+- 规则按权重排序，高权重规则优先注入
+
+**规则过期机制**：
+- 学习规则有 TTL（默认 30 天）
+- 过期后需重新 `learn` 以更新
+- 团队规范演变后不会用过时规则影响审查
+
 ## 🔄 未来扩展方向
 
 1. **GitHub App 集成** - PR 创建时自动触发审查
-2. **团队规范学习** - 从历史 PR 评论中学习团队特定标准
-3. **IDE 插件** - VS Code / JetBrains 插件，在 IDE 内直接查看
+2. **IDE 插件** - VS Code / JetBrains 插件，在 IDE 内直接查看
 
 ## 📚 相关文档
 

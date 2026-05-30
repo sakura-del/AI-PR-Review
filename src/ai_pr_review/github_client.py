@@ -121,6 +121,45 @@ class GitHubClient:
         pr = repo.get_pull(number)
         return pr.head.sha
 
+    def get_repo_pr_comments(self, url: str, max_prs: int = 20) -> list[dict]:
+        owner, repo_name, _ = parse_pr_url(url)
+        repo = self._client.get_repo(f"{owner}/{repo_name}")
+        pulls = repo.get_pulls(state="closed", sort="updated", direction="desc")
+
+        comments = []
+        for pr in pulls[:max_prs]:
+            try:
+                for c in pr.get_review_comments():
+                    comments.append({
+                        "pr_number": pr.number,
+                        "pr_title": pr.title,
+                        "file": c.path,
+                        "line": c.line,
+                        "body": c.body,
+                        "author": c.user.login,
+                        "created_at": str(c.created_at),
+                        "comment_type": "review",
+                    })
+            except GithubException:
+                pass
+
+            try:
+                for c in pr.get_issue_comments():
+                    comments.append({
+                        "pr_number": pr.number,
+                        "pr_title": pr.title,
+                        "file": "",
+                        "line": 0,
+                        "body": c.body,
+                        "author": c.user.login,
+                        "created_at": str(c.created_at),
+                        "comment_type": "issue",
+                    })
+            except GithubException:
+                pass
+
+        return comments
+
     def get_commit_diff(self, url: str, base_sha: str, head_sha: str) -> str:
         import requests
         owner, repo_name, _ = parse_pr_url(url)

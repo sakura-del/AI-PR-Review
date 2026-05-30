@@ -1,5 +1,9 @@
 import json
 from ai_pr_review.expert_knowledge import ExpertProfile
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ai_pr_review.team_learner import TeamRule
 
 
 SYSTEM_PROMPT = """你是一位代码审查专家。根据PR变更进行专业审查。
@@ -108,6 +112,7 @@ def build_analysis_prompt(
     experts: list[ExpertProfile],
     custom_rules: list[str] | None = None,
     incremental_context: dict | None = None,
+    team_rules: list["TeamRule"] | None = None,
 ) -> list[dict[str, str]]:
     expert_context = build_expert_context(experts)
 
@@ -138,6 +143,16 @@ def build_analysis_prompt(
             f"- 未变更文件: {unchanged}\n"
         )
         user_content_parts.append(inc_info)
+
+    if team_rules:
+        team_text = "\n## 团队审查模式（从历史评论中学习）\n"
+        for rule in team_rules:
+            source_tag = "[学习]" if rule.source == "learned" else "[手动]"
+            weight_tag = f"(权重:{rule.weight:.1f})" if rule.weight != 1.0 else ""
+            team_text += f"- {source_tag} [{rule.category}] {rule.description} {weight_tag}\n"
+            if rule.example:
+                team_text += f"  示例：{rule.example}\n"
+        user_content_parts.append(team_text)
 
     user_content_parts.append("\n" + OUTPUT_SCHEMA)
     user_content_parts.append("\n" + FEW_SHOT_EXAMPLE)

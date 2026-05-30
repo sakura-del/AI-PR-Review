@@ -175,6 +175,16 @@ class ExpertOverride:
 
 
 @dataclass
+class TeamLearningConfig:
+    enabled: bool = False
+    max_prs: int = 20
+    max_comments: int = 100
+    min_rule_weight: float = 0.3
+    auto_learn: bool = False
+    rule_ttl_days: int = 30
+
+
+@dataclass
 class ProjectConfig:
     ignore_paths: list[str] = field(default_factory=lambda: [
         "*.lock",
@@ -189,6 +199,7 @@ class ProjectConfig:
     enabled_experts: list[str] | None = None
     expert_overrides: dict[str, ExpertOverride] = field(default_factory=dict)
     custom_experts: dict[str, dict] = field(default_factory=dict)
+    team_learning: TeamLearningConfig = field(default_factory=TeamLearningConfig)
 
     def should_ignore(self, file_path: str) -> bool:
         for pattern in self.ignore_paths:
@@ -244,5 +255,16 @@ def load_project_config(project_dir: Path | None = None) -> ProjectConfig:
         for expert_key, expert_data in data["custom_experts"].items():
             if isinstance(expert_data, dict):
                 config.custom_experts[expert_key] = expert_data
+
+    if "team_learning" in data and isinstance(data["team_learning"], dict):
+        tl = data["team_learning"]
+        config.team_learning = TeamLearningConfig(
+            enabled=tl.get("enabled", False),
+            max_prs=int(tl.get("max_prs", 20)),
+            max_comments=int(tl.get("max_comments", 100)),
+            min_rule_weight=float(tl.get("min_rule_weight", 0.3)),
+            auto_learn=tl.get("auto_learn", False),
+            rule_ttl_days=int(tl.get("rule_ttl_days", 30)),
+        )
 
     return config
