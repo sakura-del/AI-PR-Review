@@ -47,20 +47,28 @@ class GitHubClient:
 
     def _fetch_diff_via_api(self, owner: str, repo_name: str, number: int) -> str:
         import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+
         headers = {
             "Accept": "application/vnd.github.v3.diff",
         }
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
         diff_url = f"https://github.com/{owner}/{repo_name}/pull/{number}.diff"
-        response = requests.get(diff_url, headers=headers, timeout=60)
+
+        session = requests.Session()
+        retry = Retry(total=3, backoff_factor=2, status_forcelist=[500, 502, 503, 504])
+        session.mount("https://", HTTPAdapter(max_retries=retry))
+
+        response = session.get(diff_url, headers=headers, timeout=120)
         if response.status_code == 406 or response.status_code == 302:
             headers = {
                 "Accept": "text/plain",
             }
             if self._token:
                 headers["Authorization"] = f"Bearer {self._token}"
-            response = requests.get(diff_url, headers=headers, timeout=60)
+            response = session.get(diff_url, headers=headers, timeout=120)
         response.raise_for_status()
         return response.text
 
@@ -127,7 +135,11 @@ class GitHubClient:
         pulls = repo.get_pulls(state="closed", sort="updated", direction="desc")
 
         comments = []
-        for pr in pulls[:max_prs]:
+        count = 0
+        for pr in pulls:
+            if count >= max_prs:
+                break
+            count += 1
             try:
                 for c in pr.get_review_comments():
                     comments.append({
@@ -162,12 +174,20 @@ class GitHubClient:
 
     def get_commit_diff(self, url: str, base_sha: str, head_sha: str) -> str:
         import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+
         owner, repo_name, _ = parse_pr_url(url)
         headers = {"Accept": "application/vnd.github.v3.diff"}
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
         compare_url = f"https://api.github.com/repos/{owner}/{repo_name}/compare/{base_sha}...{head_sha}"
-        response = requests.get(compare_url, headers=headers, timeout=60)
+
+        session = requests.Session()
+        retry = Retry(total=3, backoff_factor=2, status_forcelist=[500, 502, 503, 504])
+        session.mount("https://", HTTPAdapter(max_retries=retry))
+
+        response = session.get(compare_url, headers=headers, timeout=120)
         response.raise_for_status()
 
         import json

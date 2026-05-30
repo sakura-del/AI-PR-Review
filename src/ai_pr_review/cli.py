@@ -50,8 +50,13 @@ def review(
 
     console.print(f"📋 PR: [bold]{pr_metadata.title}[/bold] by {pr_metadata.author}")
 
-    with console.status("Fetching PR diff..."):
-        diff_content = gh_client.get_pr_diff_content(pr_url)
+    try:
+        with console.status("Fetching PR diff..."):
+            diff_content = gh_client.get_pr_diff_content(pr_url)
+    except Exception as e:
+        console.print(f"[red]❌ Failed to fetch PR diff: {e}[/red]")
+        console.print("[yellow]💡 This is likely a network issue. Please check your connection and try again.[/yellow]")
+        raise typer.Exit(code=1)
 
     with console.status("Parsing diff..."):
         parsed_diff = parse_diff(diff_content)
