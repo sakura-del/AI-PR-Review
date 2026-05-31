@@ -209,6 +209,7 @@ class AIAnalyzer:
             file_context=context.get("file_contents", ""),
             experts=experts,
             custom_rules=self._custom_rules,
+            team_rules=self._team_rules if self._team_rules else None,
         )
 
         full_response = ""
@@ -231,6 +232,7 @@ class AIAnalyzer:
 
         result = parse_ai_response(full_response)
         result = self._apply_filters(result, severity_threshold, focus, self._config.analysis.min_confidence)
+        yield ("__RESULT__", result)
 
     def _apply_filters(
         self,
@@ -318,6 +320,39 @@ class AIAnalyzer:
         results = await asyncio.gather(*tasks)
 
         return self._merge_shard_results(results)
+
+    async def analyze_with_shards_stream(
+        self,
+        pr_metadata: PRMetadata,
+        parsed_diff: ParsedDiff,
+        severity_threshold: str = "low",
+        focus: list[str] | None = None,
+    ):
+        if not self._should_shard(parsed_diff):
+            async for chunk in self.analyze_stream(pr_metadata, parsed_diff, severity_threshold, focus):
+                yield chunk
+            return
+
+        logger.info(f"Large PR detected ({len(parsed_diff.files)} files), streaming with sharding")
+        shards = self._shard_diff(parsed_diff)
+        logger.info(f"Split into {len(shards)} shards")
+
+        all_results = []
+        for i, shard in enumerate(shards):
+            yield f"\n📦 Shard {i + 1}/{len(shards)}\n"
+
+            shard_result = None
+            async for chunk in self.analyze_stream(pr_metadata, shard, severity_threshold, focus):
+                if isinstance(chunk, tuple) and chunk[0] == "__RESULT__":
+                    shard_result = chunk[1]
+                else:
+                    yield chunk
+
+            if shard_result:
+                all_results.append(shard_result)
+
+        merged = self._merge_shard_results(all_results)
+        yield ("__RESULT__", merged)
 
     @staticmethod
     def _merge_shard_results(results: list[AnalysisResult]) -> AnalysisResult:

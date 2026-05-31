@@ -1,4 +1,6 @@
 import asyncio
+import sys
+import time
 import logging
 from typing import Optional
 from pathlib import Path
@@ -16,6 +18,24 @@ from ai_pr_review.history import save_record, load_records, format_history_table
 from ai_pr_review.incremental import IncrementalAnalyzer
 from ai_pr_review.team_learner import TeamLearner
 from ai_pr_review.team_rules import save_team_pattern, load_team_pattern
+
+async def _run_stream(stream_gen):
+    result = None
+    async for chunk in stream_gen:
+        if isinstance(chunk, tuple) and chunk[0] == "__RESULT__":
+            result = chunk[1]
+        elif isinstance(chunk, str):
+            if len(chunk) <= 15:
+                sys.stdout.write(chunk)
+                sys.stdout.flush()
+            else:
+                for char in chunk:
+                    sys.stdout.write(char)
+                    sys.stdout.flush()
+                    time.sleep(0.003)
+    sys.stdout.write("\n\n")
+    sys.stdout.flush()
+    return result
 
 app = typer.Typer(
     name="ai-pr-review",
@@ -123,7 +143,7 @@ def review(
         total_lines = parsed_diff.total_additions + parsed_diff.total_deletions
         should_shard = file_count > SHARD_FILE_THRESHOLD or total_lines > SHARD_LINE_THRESHOLD
 
-        if should_shard:
+        if should_shard and not stream:
             console.print(
                 f"📦 Large PR detected ({file_count} files, {total_lines} lines), "
                 f"sharding analysis..."
@@ -137,6 +157,27 @@ def review(
                         focus=focus_list,
                     )
                 )
+        elif stream:
+            if should_shard:
+                console.print(
+                    f"📦 Large PR detected ({file_count} files, {total_lines} lines), "
+                    f"streaming with sharding..."
+                )
+                gen = analyzer.analyze_with_shards_stream(
+                    pr_metadata=pr_metadata,
+                    parsed_diff=parsed_diff,
+                    severity_threshold=severity,
+                    focus=focus_list,
+                )
+            else:
+                console.print("\n🔍 [dim]Streaming analysis...[/dim]\n")
+                gen = analyzer.analyze_stream(
+                    pr_metadata=pr_metadata,
+                    parsed_diff=parsed_diff,
+                    severity_threshold=severity,
+                    focus=focus_list,
+                )
+            result = asyncio.run(_run_stream(gen))
         else:
             with console.status("Analyzing with AI..."):
                 result = asyncio.run(
@@ -148,6 +189,9 @@ def review(
                     )
                 )
 
+    if stream:
+        console.print("\n" + "─" * 60)
+        console.print("[bold]📊 格式化分析报告[/bold]\n")
     output = format_terminal(result)
     console.print(output)
 

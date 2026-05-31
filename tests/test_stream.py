@@ -79,8 +79,9 @@ async def test_stream_yields_content():
         async for chunk in analyzer.analyze_stream(metadata, diff):
             chunks.append(chunk)
 
-        assert len(chunks) > 0
-        assert "streamed content" in "".join(chunks)
+        text_chunks = [c for c in chunks if isinstance(c, str)]
+        assert len(text_chunks) > 0
+        assert "streamed content" in "".join(text_chunks)
 
 
 @pytest.mark.asyncio
@@ -99,7 +100,8 @@ async def test_stream_handles_error():
         async for chunk in analyzer.analyze_stream(metadata, diff):
             chunks.append(chunk)
 
-        assert "" in chunks
+        text_chunks = [c for c in chunks if isinstance(c, str)]
+        assert "" in text_chunks
 
 
 @pytest.mark.asyncio
@@ -121,7 +123,8 @@ async def test_stream_empty_response():
         async for chunk in analyzer.analyze_stream(metadata, diff):
             chunks.append(chunk)
 
-        assert len(chunks) == 0 or all(c == "" for c in chunks if c is not None)
+        text_chunks = [c for c in chunks if isinstance(c, str)]
+        assert len(text_chunks) == 0 or all(c == "" for c in text_chunks)
 
 
 @pytest.mark.asyncio
@@ -148,7 +151,8 @@ async def test_stream_multiple_chunks():
         async for chunk in analyzer.analyze_stream(metadata, diff):
             collected.append(chunk)
 
-        result = "".join(collected)
+        text_chunks = [c for c in collected if isinstance(c, str)]
+        result = "".join(text_chunks)
         assert result == "chunk1chunk2chunk3"
 
 
@@ -174,3 +178,79 @@ async def test_stream_applies_filters():
         collected = []
         async for chunk in analyzer.analyze_stream(metadata, diff, severity_threshold="medium"):
             collected.append(chunk)
+
+        result_tuples = [c for c in collected if isinstance(c, tuple) and c[0] == "__RESULT__"]
+        assert len(result_tuples) == 1
+        result_obj = result_tuples[0][1]
+        assert len(result_obj.findings) == 0
+
+
+@pytest.mark.asyncio
+async def test_shards_stream_yields_headers_and_content():
+    config = _make_config()
+    metadata = _make_metadata()
+
+    files = []
+    for i in range(25):
+        hunk = DiffHunk(
+            file_path=f"file_{i}.py",
+            change_type=ChangeType.MODIFIED,
+            old_start=1, old_count=5, new_start=1, new_count=10,
+            content=f"@@ -1 +5 @@\n+line {i}",
+            header="@@ -1 +5 @@",
+        )
+        files.append(FileDiff(
+            path=f"file_{i}.py",
+            change_type=ChangeType.MODIFIED,
+            hunks=[hunk],
+            additions=10, deletions=5,
+        ))
+    diff = ParsedDiff(files=files, total_additions=250, total_deletions=125)
+
+    json_resp = '{"summary":{"intent":"t","scope":"s","key_changes":[]},"findings":[],"suggestions":[]}'
+    mock_chunk = MagicMock()
+    mock_chunk.choices = [MagicMock()]
+    mock_chunk.choices[0].delta.content = json_resp
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response([mock_chunk]))
+
+    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+        analyzer = AIAnalyzer(config=config)
+
+        collected = []
+        async for chunk in analyzer.analyze_with_shards_stream(metadata, diff):
+            collected.append(chunk)
+
+        text_chunks = [c for c in collected if isinstance(c, str)]
+        full_text = "".join(text_chunks)
+        assert "📦 Shard" in full_text
+
+        result_tuples = [c for c in collected if isinstance(c, tuple) and c[0] == "__RESULT__"]
+        assert len(result_tuples) == 1
+
+
+@pytest.mark.asyncio
+async def test_shards_stream_small_pr_falls_through():
+    config = _make_config()
+    metadata = _make_metadata()
+    diff = _make_small_diff()
+
+    mock_chunk = MagicMock()
+    mock_chunk.choices = [MagicMock()]
+    mock_chunk.choices[0].delta.content = "hello"
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response([mock_chunk]))
+
+    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+        analyzer = AIAnalyzer(config=config)
+
+        collected = []
+        async for chunk in analyzer.analyze_with_shards_stream(metadata, diff):
+            collected.append(chunk)
+
+        text_chunks = [c for c in collected if isinstance(c, str)]
+        full_text = "".join(text_chunks)
+        assert "📦 Shard" not in full_text
+        assert "hello" in full_text
