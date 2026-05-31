@@ -1,5 +1,7 @@
 # AI PR Review 助手
 
+> 🎬 **Demo 视频**：[【七牛云比赛demo】AI PR Review 助手功能演示](https://www.bilibili.com/video/BV1EeVS6gEQo/) — 声音讲解 + 完整展示核心功能
+
 一个基于国产大模型的 Pull Request 智能代码审查工具，帮助开发者提升代码质量。
 
 ## ✨ 功能特性
@@ -398,12 +400,10 @@ team_learning:
 
 ## 🎬 Demo 视频
 
-- 视频链接：（待上传到 bilibili/云盘）
-- 演示内容：
-  - 工具安装和配置
-  - 多种使用模式的演示
-  - 真实 PR 的分析结果
-  - GitHub 评论回写效果
+[【七牛云比赛demo】AI PR Review 助手功能演示](https://www.bilibili.com/video/BV1EeVS6gEQo/)
+
+- 声音完整讲解、展示作品主要功能和效果
+- 覆盖核心模块：PR 分析、风险识别、智能建议、流式输出、团队规范学习等
 
 ## 📝 许可证
 
