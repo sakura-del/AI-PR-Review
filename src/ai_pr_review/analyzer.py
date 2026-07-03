@@ -295,6 +295,7 @@ class AIAnalyzer:
             file_context=context.get("file_contents", ""),
             experts=experts,
             custom_rules=self._custom_rules,
+            team_rules=self._team_rules if self._team_rules else None,
         )
 
         raw_response = await self._call_ai(messages)
