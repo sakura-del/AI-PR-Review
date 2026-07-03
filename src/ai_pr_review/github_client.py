@@ -46,10 +46,6 @@ class GitHubClient:
         return self._fetch_diff_via_api(owner, repo_name, number)
 
     def _fetch_diff_via_api(self, owner: str, repo_name: str, number: int) -> str:
-        import requests
-        from requests.adapters import HTTPAdapter
-        from urllib3.util.retry import Retry
-
         headers = {
             "Accept": "application/vnd.github.v3.diff",
         }
@@ -57,20 +53,19 @@ class GitHubClient:
             headers["Authorization"] = f"Bearer {self._token}"
         diff_url = f"https://github.com/{owner}/{repo_name}/pull/{number}.diff"
 
-        session = requests.Session()
-        retry = Retry(total=3, backoff_factor=2, status_forcelist=[500, 502, 503, 504])
-        session.mount("https://", HTTPAdapter(max_retries=retry))
-
-        response = session.get(diff_url, headers=headers, timeout=120)
-        if response.status_code == 406 or response.status_code == 302:
-            headers = {
-                "Accept": "text/plain",
-            }
-            if self._token:
-                headers["Authorization"] = f"Bearer {self._token}"
-            response = session.get(diff_url, headers=headers, timeout=120)
-        response.raise_for_status()
-        return response.text
+        # 使用 httpx 配置重试策略，等效于原 requests + HTTPAdapter + Retry
+        transport = httpx.HTTPTransport(retries=3)
+        with httpx.Client(transport=transport, timeout=120.0) as client:
+            response = client.get(diff_url, headers=headers)
+            if response.status_code in (406, 302):
+                headers = {
+                    "Accept": "text/plain",
+                }
+                if self._token:
+                    headers["Authorization"] = f"Bearer {self._token}"
+                response = client.get(diff_url, headers=headers)
+            response.raise_for_status()
+            return response.text
 
     def get_file_content(self, url: str, file_path: str, ref: str) -> str:
         owner, repo_name, _ = parse_pr_url(url)
@@ -173,9 +168,7 @@ class GitHubClient:
         return comments
 
     def get_commit_diff(self, url: str, base_sha: str, head_sha: str) -> str:
-        import requests
-        from requests.adapters import HTTPAdapter
-        from urllib3.util.retry import Retry
+        import json
 
         owner, repo_name, _ = parse_pr_url(url)
         headers = {"Accept": "application/vnd.github.v3.diff"}
@@ -183,19 +176,17 @@ class GitHubClient:
             headers["Authorization"] = f"Bearer {self._token}"
         compare_url = f"https://api.github.com/repos/{owner}/{repo_name}/compare/{base_sha}...{head_sha}"
 
-        session = requests.Session()
-        retry = Retry(total=3, backoff_factor=2, status_forcelist=[500, 502, 503, 504])
-        session.mount("https://", HTTPAdapter(max_retries=retry))
+        # 使用 httpx 配置重试策略，等效于原 requests + HTTPAdapter + Retry
+        transport = httpx.HTTPTransport(retries=3)
+        with httpx.Client(transport=transport, timeout=120.0) as client:
+            response = client.get(compare_url, headers=headers)
+            response.raise_for_status()
 
-        response = session.get(compare_url, headers=headers, timeout=120)
-        response.raise_for_status()
-
-        import json
-        data = response.json()
-        files = data.get("files", [])
-        diff_parts = []
-        for f in files:
-            if f.get("patch"):
-                a_path = f.get("filename", "")
-                diff_parts.append(f"diff --git a/{a_path} b/{a_path}\n{f['patch']}")
-        return "\n".join(diff_parts)
+            data = response.json()
+            files = data.get("files", [])
+            diff_parts = []
+            for f in files:
+                if f.get("patch"):
+                    a_path = f.get("filename", "")
+                    diff_parts.append(f"diff --git a/{a_path} b/{a_path}\n{f['patch']}")
+            return "\n".join(diff_parts)
