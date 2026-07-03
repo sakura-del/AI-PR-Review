@@ -20,6 +20,10 @@
 - 🔄 **增量分析** - 仅分析自上次审查以来的新增变更，大幅节省 token
 - ⚙️ **项目配置** - `.ai-pr-review.yaml` 支持忽略路径和自定义规则
 - 🧠 **团队规范学习** - 从历史 PR 评论中学习团队审查模式，减少误报
+- 🐛 **行级评论精确回写** - 修复后真正发布到 PR 对应行号（v0.2.0）
+- ⏱️ **分析耗时记录** - 历史记录包含 `duration_seconds`（v0.2.0）
+- 🐳 **Docker 部署** - 多阶段构建镜像，开箱即用（v0.2.0）
+- 🔄 **CI/CD 集成** - GitHub Actions 自动化测试与 AI 审查（v0.2.0）
 
 ## 🚀 快速开始
 
@@ -153,6 +157,11 @@ AI-PR-Review/
 ├── docs/                        # 文档
 ├── .ai-pr-review.yaml           # 项目级自定义配置
 ├── .env.example                 # 环境变量示例
+├── .github/workflows/           # GitHub Actions 工作流
+│   ├── ci.yml                   # CI 测试流水线
+│   └── ai-review.yml            # AI 自动审查工作流
+├── Dockerfile                   # 多阶段构建镜像
+├── .dockerignore                # Docker 构建排除
 ├── .gitignore
 └── pyproject.toml               # 项目配置
 ```
@@ -166,20 +175,21 @@ AI-PR-Review/
 | GitHub API | PyGithub |
 | AI API | OpenAI Python SDK (兼容国产模型) |
 | 终端输出 | Rich |
-| HTTP 请求 | Requests + httpx |
+| HTTP 请求 | httpx (统一异步/同步 HTTP 客户端) |
 | Token 计算 | Tiktoken |
 | 环境管理 | python-dotenv |
+| CI/CD | GitHub Actions (CI + AI Review) |
+| 容器化 | Docker (多阶段构建) |
 
 ## 📦 依赖列表
 
 - `typer>=0.12.0` - 现代 CLI 框架
 - `pygithub>=2.3.0` - GitHub API 客户端
 - `openai>=1.30.0` - OpenAI SDK（兼容国产模型）
-- `httpx>=0.27.0` - 异步 HTTP 客户端
+- `httpx>=0.27.0` - 统一 HTTP 客户端（同步+异步）
 - `rich>=13.7.0` - 终端美化库
 - `tiktoken>=0.7.0` - Token 计数工具
 - `python-dotenv>=1.0.0` - 环境变量管理
-- `requests>=2.31.0` - HTTP 客户端
 
 ## 🧪 运行测试
 
@@ -190,6 +200,56 @@ pytest tests/ -v
 # 运行测试并显示覆盖率
 pytest tests/ -v --cov=ai_pr_review
 ```
+
+## 🐳 Docker 部署
+
+```bash
+# 构建镜像
+docker build -t ai-pr-review .
+
+# 运行审查（需在环境变量中提供 GITHUB_TOKEN / OPENAI_API_KEY）
+docker run --rm \
+  -e GITHUB_TOKEN=$GITHUB_TOKEN \
+  -e OPENAI_API_KEY=$OPENAI_API_KEY \
+  -e OPENAI_BASE_URL=$OPENAI_BASE_URL \
+  -e AI_MODEL=deepseek-chat \
+  ai-pr-review review https://github.com/owner/repo/pull/123 --no-comment
+```
+
+镜像基于 `python:3.11-slim` 多阶段构建，入口点为 `ai-pr-review` CLI。
+
+## 🔄 CI/CD 集成
+
+本项目已配置 GitHub Actions 自动化工作流：
+
+| Workflow | 触发时机 | 作用 |
+|----------|----------|------|
+| `.github/workflows/ci.yml` | push / PR | 多版本（Python 3.11/3.12）pytest + 覆盖率上传 |
+| `.github/workflows/ai-review.yml` | PR opened/synchronize/reopened | 自动运行 AI 审查并发布行级评论 |
+
+**启用 AI Review 工作流**：在仓库 Settings → Secrets 中配置：
+- `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `AI_MODEL`
+
+## 📋 变更日志
+
+### v0.2.0 (阶段一：缺陷修复 + 基础补强)
+
+**Bug Fixes**
+- 🐛 `fix(prompt)` - 拆分 `OUTPUT_SCHEMA.findings.fix` 字段为 `suggestion` + `code_snippet`，修复建议不再丢失
+- 🐛 `fix(analyzer)` - 修复 `_analyze_shard` 未传递 `team_rules`，大 PR 分片分析现在能加载团队规则
+- 🐛 `fix(cli)` - CLI 改用 `post_review_with_inline_comments`，行级评论真正生效
+- 🐛 `fix(cli)` - 添加 `time.perf_counter()` 计时，分析耗时正确写入 `AnalysisRecord.duration_seconds`
+
+**Refactor**
+- ♻️ `refactor(github)` - 统一依赖：移除 `requests`，`github_client.py` 全量改用 `httpx` + `HTTPTransport(retries=3)`，减少依赖冲突
+
+**Features**
+- ✨ `feat(ci)` - 新增 `.github/workflows/ci.yml` 与 `.github/workflows/ai-review.yml`，实现 CI/CD 集成
+- ✨ `feat(docker)` - 新增多阶段构建 `Dockerfile` 与 `.dockerignore`，支持容器化部署
+- ✨ `test(stream)` - 补充流式输出相关测试用例
+
+### v0.1.0
+- 🎉 初版发布：PR 分析、风险识别、智能建议、行级评论、流式输出、团队规范学习、增量分析、专家知识库等核心能力
 
 ## 📄 设计思路
 

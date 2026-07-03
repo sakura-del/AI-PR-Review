@@ -47,11 +47,13 @@ OUTPUT_SCHEMA = """\
       "line": 行号,
       "title": "问题标题",
       "description": "问题描述",
-      "fix": "修复代码"
+      "suggestion": "修复建议文字描述",
+      "code_snippet": "修复代码示例"
     }
   ],
   "suggestions": [
     {
+      "category": "类别",
       "priority": "P1|P2|P3",
       "description": "改进建议",
       "example": "示例代码"
@@ -81,11 +83,13 @@ FEW_SHOT_EXAMPLE = """\
       "line": 4,
       "title": "硬编码JWT密钥",
       "description": "密钥硬编码存在泄露风险",
-      "fix": "SECRET = os.environ.get('JWT_SECRET')"
+      "suggestion": "从环境变量读取密钥",
+      "code_snippet": "SECRET = os.environ.get('JWT_SECRET')"
     }
   ],
   "suggestions": [
     {
+      "category": "security",
       "priority": "P2",
       "description": "考虑使用密钥轮换",
       "example": "from keyring import get_password"
