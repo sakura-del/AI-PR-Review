@@ -99,6 +99,8 @@ def review(
     current_sha = ""
     last_record = None
     is_incremental_analysis = False
+    analysis_start = time.perf_counter()
+    analysis_duration = 0.0
 
     if incremental:
         try:
@@ -189,25 +191,29 @@ def review(
                     )
                 )
 
+    analysis_duration = time.perf_counter() - analysis_start
+
     if stream:
         console.print("\n" + "─" * 60)
         console.print("[bold]📊 格式化分析报告[/bold]\n")
     output = format_terminal(result)
     console.print(output)
 
-    if not no_comment and config.github.token:
-        with console.status("Posting review to GitHub..."):
-            commenter = Commenter(gh_client)
-            commenter.post_review(pr_url, result, event=review_action)
-        console.print("✅ Review posted to GitHub!")
-    elif not no_comment and not config.github.token:
-        console.print("⚠️  No GitHub token configured, skipping comment post")
-
     if not current_sha:
         try:
             current_sha = gh_client.get_pr_head_sha(pr_url)
         except Exception:
             current_sha = ""
+
+    if not no_comment and config.github.token:
+        with console.status("Posting review to GitHub..."):
+            commenter = Commenter(gh_client)
+            commenter.post_review_with_inline_comments(
+                pr_url, result, commit_id=current_sha, event=review_action,
+            )
+        console.print("✅ Review posted to GitHub!")
+    elif not no_comment and not config.github.token:
+        console.print("⚠️  No GitHub token configured, skipping comment post")
 
     record = AnalysisRecord(
         pr_url=pr_url,
@@ -220,6 +226,7 @@ def review(
         model=config.ai.model,
         head_sha=current_sha,
         is_incremental=is_incremental_analysis,
+        duration_seconds=round(analysis_duration, 2),
     )
     save_record(record)
 
