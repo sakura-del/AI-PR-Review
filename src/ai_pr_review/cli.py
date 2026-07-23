@@ -324,5 +324,106 @@ def history(
     format_history_table(records, limit=limit)
 
 
+@app.command()
+def serve(
+    port: int = typer.Option(8000, "--port", "-p", help="Port to listen on"),
+    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind"),
+    webhook_secret: Optional[str] = typer.Option(None, "--webhook-secret", help="GitHub Webhook secret for signature verification"),
+):
+    """启动 REST API 服务（含 webhook 端点）"""
+    import asyncio as _asyncio
+    from ai_pr_review.api_server import build_router, serve as _serve
+
+    config = load_config()
+
+    async def review_callback(pr_url: str) -> None:
+        """webhook/API 触发的审查回调"""
+        console.print(f"📨 Received review request: {pr_url}")
+        # 复用 review 命令的核心逻辑（简化版，避免递归调用 typer）
+        gh_client = GitHubClient(token=config.github.token)
+        pr_metadata = gh_client.get_pr_metadata(pr_url)
+        diff_content = gh_client.get_pr_diff_content(pr_url)
+        parsed_diff = parse_diff(diff_content)
+        analyzer = AIAnalyzer(
+            config=config,
+            get_file_content_fn=lambda url, path, ref: gh_client.get_file_content(
+                pr_url, path, pr_metadata.head_branch
+            ),
+            repo_url=pr_url,
+        )
+        result = await analyzer.analyze(
+            pr_metadata=pr_metadata,
+            parsed_diff=parsed_diff,
+        )
+        output = format_terminal(result)
+        console.print(output)
+        if config.github.token:
+            current_sha = gh_client.get_pr_head_sha(pr_url)
+            commenter = Commenter(gh_client)
+            commenter.post_review_with_inline_comments(pr_url, result, commit_id=current_sha)
+            console.print("✅ Review posted to GitHub!")
+
+    def history_callback() -> list:
+        from ai_pr_review.history import load_records
+        from dataclasses import asdict
+        return [asdict(r) for r in load_records()]
+
+    router = build_router(
+        review_fn=review_callback,
+        history_fn=history_callback,
+        webhook_secret=webhook_secret or "",
+    )
+
+    console.print(Panel(f"🚀 AI PR Review API Server", subtitle=f"{host}:{port}"))
+    console.print("Endpoints:")
+    console.print("  POST /api/review     - 触发 PR 审查")
+    console.print("  GET  /api/history    - 查询审查历史")
+    console.print("  GET  /api/health     - 健康检查")
+    console.print("  POST /webhook        - GitHub Webhook 入口")
+    console.print("\nPress Ctrl+C to stop.\n")
+
+    _asyncio.run(_serve(router, host=host, port=port).serve_forever())
+
+
+@app.command()
+def dashboard(
+    output: str = typer.Option("dashboard.html", "--output", "-o", help="Output HTML file path"),
+    port: int = typer.Option(8001, "--port", "-p", help="Port to serve on (0 = no server, just write file)"),
+):
+    """生成审查历史 Dashboard HTML 页面"""
+    from ai_pr_review.dashboard import render_dashboard
+    import webbrowser
+    from pathlib import Path as _Path
+
+    html_content = render_dashboard()
+    output_path = _Path(output)
+    output_path.write_text(html_content, encoding="utf-8")
+    console.print(f"✅ Dashboard saved to {output_path}")
+
+    if port > 0:
+        # 启动简易 HTTP 服务展示页面
+        import http.server
+        import socketserver
+        import threading
+
+        class _Handler(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=str(output_path.parent), **kwargs)
+
+            def do_GET(self):
+                if self.path == "/" or self.path == "/dashboard.html":
+                    self.path = "/" + output_path.name
+                return super().do_GET()
+
+        console.print(f"🌐 Serving dashboard at http://localhost:{port}")
+        console.print("Press Ctrl+C to stop.")
+        with socketserver.TCPServer(("127.0.0.1", port), _Handler) as httpd:
+            webbrowser.open(f"http://localhost:{port}/")
+            try:
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                console.print("\n👋 Dashboard server stopped.")
+
+
 if __name__ == "__main__":
     app()

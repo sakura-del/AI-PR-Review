@@ -23,6 +23,10 @@
 - 🎯 **增量影响图** - 基于 AST 闭包裁剪，仅检索受变更函数影响的调用子图（v0.5.0）
 - 📚 **RAG 知识库** - 基于 TF-IDF 从历史审查记录检索相似 PR 经验（v0.5.0）
 - 🤖 **多 Agent 协作** - 每个专家独立审查，共识加权聚合，对抗式验证过滤误报（v0.6.0）
+- 🪝 **Webhook 自动审查** - 监听 PR 事件自动触发，HMAC 签名校验（v0.7.0）
+- 🌐 **REST API 服务** - asyncio 原生 HTTP server，供外部系统集成（v0.7.0）
+- 🔌 **多平台支持** - GitHub + GitLab（含自托管实例），URL 自动识别（v0.7.0）
+- 📊 **审查 Dashboard** - HTML 页面展示历史与统计，单文件部署（v0.7.0）
 - 🐛 **行级评论精确回写** - 修复后真正发布到 PR 对应行号（v0.2.0）
 - ⏱️ **分析耗时记录** - 历史记录包含 `duration_seconds`（v0.2.0）
 - 🐳 **Docker 部署** - 多阶段构建镜像，开箱即用（v0.2.0）
@@ -122,6 +126,15 @@ ai-pr-review learn https://github.com/owner/repo/pull/123 --force
 # 查看历史分析记录
 ai-pr-review history
 ai-pr-review history --limit 10
+
+# 启动 REST API 服务（含 webhook 端点）
+ai-pr-review serve --port 8000 --webhook-secret your_secret
+
+# 生成审查历史 Dashboard HTML 页面并本地预览
+ai-pr-review dashboard --output dashboard.html --port 8001
+
+# 审查 GitLab MR（自动识别平台）
+ai-pr-review review https://gitlab.com/owner/repo/-/merge_requests/1 --no-comment
 ```
 
 ### 命令行参数
@@ -240,6 +253,24 @@ docker run --rm \
 - `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `AI_MODEL`
 
 ## 📋 变更日志
+
+### v0.7.0 (阶段五：生态集成 + 平台化)
+
+**Features**
+- 🪝 `feat(webhook)` - GitHub Webhook 处理器：监听 pull_request 事件（opened/synchronize/reopened）自动触发审查，HMAC-SHA256 签名校验，异步派发不阻塞响应
+- 🌐 `feat(api)` - 轻量 REST API 服务：基于 asyncio 原生 HTTP server，零额外依赖，提供 `POST /api/review`、`GET /api/history`、`GET /api/health`、`POST /webhook` 端点
+- 🔌 `feat(platform)` - 多平台适配层：抽象 `GitPlatform` 接口，新增 GitLab 支持（含自托管实例与嵌套子组），URL 自动识别平台类型
+- 📊 `feat(dashboard)` - 审查历史 Dashboard：纯字符串模板生成 HTML，内联 CSS 单文件部署，统计卡片 + 历史表格 + XSS 防护
+
+**CLI**
+- ⚙️ 新增 `serve` 子命令启动 REST API 服务（`--port`/`--host`/`--webhook-secret`）
+- ⚙️ 新增 `dashboard` 子命令生成 HTML 并可选启动本地预览服务（`--output`/`--port`）
+
+**Tests**
+- ✅ `test(webhook)` - 20 用例：签名校验/事件解析/异步派发/异常容错
+- ✅ `test(api_server)` - 24 用例：路由分发/请求解析/端到端 TCP/异常处理
+- ✅ `test(platform)` - 26 用例：URL 识别/工厂函数/GitLab API mock/嵌套子组
+- ✅ `test(dashboard)` - 22 用例：统计计算/HTML 渲染/XSS 防护/截断
 
 ### v0.6.0 (阶段四：多 Agent 协作 + 评审质量)
 
