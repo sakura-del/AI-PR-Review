@@ -56,6 +56,7 @@ def review(
     review_action: str = typer.Option("COMMENT", "--review-action", help="GitHub review action (COMMENT/APPROVE/REQUEST_CHANGES)"),
     incremental: bool = typer.Option(False, "--incremental", "-i", help="Incremental analysis (only new changes since last review)"),
     min_confidence: int = typer.Option(2, "--min-confidence", help="Minimum confidence threshold (1-5)"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Skip cache, force fresh analysis"),
 ):
     config = load_config(Path(config_path) if config_path else None, model_override=model)
     config.analysis.min_confidence = min_confidence
@@ -110,86 +111,102 @@ def review(
         except Exception:
             last_record = None
 
-    if last_record and current_sha and last_record.head_sha != current_sha:
-        inc_analyzer = IncrementalAnalyzer(gh_client)
-        inc_diff_text = inc_analyzer.get_incremental_diff(pr_url, last_record.head_sha, current_sha)
+    # 检查结果缓存（仅非增量、非流式时）
+    cache_hit = False
+    if not no_cache and not incremental and not stream:
+        from ai_pr_review.cache import get_cached_result
+        try:
+            current_sha = gh_client.get_pr_head_sha(pr_url)
+        except Exception:
+            current_sha = ""
+        if current_sha:
+            cached = get_cached_result(pr_url, current_sha)
+            if cached:
+                console.print(f"💚 Cache hit! Returning cached result for {current_sha[:7]}")
+                result = cached
+                cache_hit = True
 
-        if inc_diff_text.strip():
-            incremental_parsed = parse_diff(inc_diff_text)
-            inc_context = inc_analyzer.build_incremental_context(
-                pr_url, parsed_diff, incremental_parsed, last_record
-            )
-            console.print(
-                f"🔄 Incremental: {len(incremental_parsed.files)} changed files "
-                f"since {last_record.head_sha[:7]}"
-            )
-            with console.status("Analyzing incremental changes..."):
-                result = asyncio.run(
-                    analyzer.analyze_incremental(
-                        pr_metadata=pr_metadata,
-                        incremental_parsed_diff=incremental_parsed,
-                        incremental_context=inc_context,
-                        severity_threshold=severity,
-                        focus=focus_list,
-                    )
+    if not cache_hit:
+        if last_record and current_sha and last_record.head_sha != current_sha:
+            inc_analyzer = IncrementalAnalyzer(gh_client)
+            inc_diff_text = inc_analyzer.get_incremental_diff(pr_url, last_record.head_sha, current_sha)
+
+            if inc_diff_text.strip():
+                incremental_parsed = parse_diff(inc_diff_text)
+                inc_context = inc_analyzer.build_incremental_context(
+                    pr_url, parsed_diff, incremental_parsed, last_record
                 )
-            is_incremental_analysis = True
-        else:
-            console.print("✅ No new changes since last review.")
+                console.print(
+                    f"🔄 Incremental: {len(incremental_parsed.files)} changed files "
+                    f"since {last_record.head_sha[:7]}"
+                )
+                with console.status("Analyzing incremental changes..."):
+                    result = asyncio.run(
+                        analyzer.analyze_incremental(
+                            pr_metadata=pr_metadata,
+                            incremental_parsed_diff=incremental_parsed,
+                            incremental_context=inc_context,
+                            severity_threshold=severity,
+                            focus=focus_list,
+                        )
+                    )
+                is_incremental_analysis = True
+            else:
+                console.print("✅ No new changes since last review.")
+                return
+        elif last_record and current_sha and last_record.head_sha == current_sha:
+            console.print("✅ No new commits since last review.")
             return
-    elif last_record and current_sha and last_record.head_sha == current_sha:
-        console.print("✅ No new commits since last review.")
-        return
-    else:
-        file_count = len(parsed_diff.files)
-        total_lines = parsed_diff.total_additions + parsed_diff.total_deletions
-        should_shard = file_count > SHARD_FILE_THRESHOLD or total_lines > SHARD_LINE_THRESHOLD
+        else:
+            file_count = len(parsed_diff.files)
+            total_lines = parsed_diff.total_additions + parsed_diff.total_deletions
+            should_shard = file_count > SHARD_FILE_THRESHOLD or total_lines > SHARD_LINE_THRESHOLD
 
-        if should_shard and not stream:
-            console.print(
-                f"📦 Large PR detected ({file_count} files, {total_lines} lines), "
-                f"sharding analysis..."
-            )
-            with console.status("Analyzing with AI (sharded)..."):
-                result = asyncio.run(
-                    analyzer.analyze_with_shards(
-                        pr_metadata=pr_metadata,
-                        parsed_diff=parsed_diff,
-                        severity_threshold=severity,
-                        focus=focus_list,
-                    )
-                )
-        elif stream:
-            if should_shard:
+            if should_shard and not stream:
                 console.print(
                     f"📦 Large PR detected ({file_count} files, {total_lines} lines), "
-                    f"streaming with sharding..."
+                    f"sharding analysis..."
                 )
-                gen = analyzer.analyze_with_shards_stream(
-                    pr_metadata=pr_metadata,
-                    parsed_diff=parsed_diff,
-                    severity_threshold=severity,
-                    focus=focus_list,
-                )
-            else:
-                console.print("\n🔍 [dim]Streaming analysis...[/dim]\n")
-                gen = analyzer.analyze_stream(
-                    pr_metadata=pr_metadata,
-                    parsed_diff=parsed_diff,
-                    severity_threshold=severity,
-                    focus=focus_list,
-                )
-            result = asyncio.run(_run_stream(gen))
-        else:
-            with console.status("Analyzing with AI..."):
-                result = asyncio.run(
-                    analyzer.analyze(
+                with console.status("Analyzing with AI (sharded)..."):
+                    result = asyncio.run(
+                        analyzer.analyze_with_shards(
+                            pr_metadata=pr_metadata,
+                            parsed_diff=parsed_diff,
+                            severity_threshold=severity,
+                            focus=focus_list,
+                        )
+                    )
+            elif stream:
+                if should_shard:
+                    console.print(
+                        f"📦 Large PR detected ({file_count} files, {total_lines} lines), "
+                        f"streaming with sharding..."
+                    )
+                    gen = analyzer.analyze_with_shards_stream(
                         pr_metadata=pr_metadata,
                         parsed_diff=parsed_diff,
                         severity_threshold=severity,
                         focus=focus_list,
                     )
-                )
+                else:
+                    console.print("\n🔍 [dim]Streaming analysis...[/dim]\n")
+                    gen = analyzer.analyze_stream(
+                        pr_metadata=pr_metadata,
+                        parsed_diff=parsed_diff,
+                        severity_threshold=severity,
+                        focus=focus_list,
+                    )
+                result = asyncio.run(_run_stream(gen))
+            else:
+                with console.status("Analyzing with AI..."):
+                    result = asyncio.run(
+                        analyzer.analyze(
+                            pr_metadata=pr_metadata,
+                            parsed_diff=parsed_diff,
+                            severity_threshold=severity,
+                            focus=focus_list,
+                        )
+                    )
 
     analysis_duration = time.perf_counter() - analysis_start
 
@@ -214,6 +231,11 @@ def review(
         console.print("✅ Review posted to GitHub!")
     elif not no_comment and not config.github.token:
         console.print("⚠️  No GitHub token configured, skipping comment post")
+
+    # 保存分析结果到缓存（跳过缓存命中、增量分析的情况）
+    if not no_cache and current_sha and not cache_hit and not is_incremental_analysis:
+        from ai_pr_review.cache import save_cached_result
+        save_cached_result(pr_url, current_sha, result)
 
     record = AnalysisRecord(
         pr_url=pr_url,

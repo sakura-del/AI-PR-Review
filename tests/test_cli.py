@@ -4,8 +4,12 @@
 所有外部依赖（GitHubClient、AIAnalyzer、Commenter 等）均通过 mock 隔离。
 """
 
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from typer.testing import CliRunner
+
+import pytest
 
 from ai_pr_review.cli import app
 from ai_pr_review.config import AppConfig, AIConfig, GitHubConfig, AnalysisConfig, ExpertConfig
@@ -25,6 +29,14 @@ from ai_pr_review.history import AnalysisRecord
 from ai_pr_review.team_learner import TeamRule, TeamPattern
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_cache_dir():
+    """自动隔离缓存目录，避免测试读写真实的 ~/.ai-pr-review/cache/。"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with patch("ai_pr_review.cache.CACHE_DIR", Path(tmpdir) / "cache"):
+            yield
 
 PR_URL = "https://github.com/owner/repo/pull/1"
 
