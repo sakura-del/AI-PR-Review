@@ -63,5 +63,4 @@ team_learning:
   max_prs: 20
   max_comments: 100
   min_rule_weight: 0.3
-  auto_learn: false
   rule_ttl_days: 30

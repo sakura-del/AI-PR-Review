@@ -33,7 +33,6 @@ class AnalysisRecord:
 
 def save_record(record: AnalysisRecord) -> None:
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    record_file = HISTORY_DIR / f"{record.timestamp.replace(':', '-')}.json"
     
     records = load_records()
     records.insert(0, record)

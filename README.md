@@ -232,6 +232,27 @@ docker run --rm \
 
 ## 📋 变更日志
 
+### v0.3.0 (阶段二：质量加固 + 体验优化)
+
+**Bug Fixes**
+- 🐛 `fix(analyzer)` - 修复 `--focus risk` 过滤掉所有结果的缺陷，添加 `risk→logic` 别名映射
+- 🐛 `fix(formatter)` - 修复 GitHub 评论底部无效链接，指向正确仓库地址
+- 🐛 `fix(analyzer)` - 消费 `enabled_experts` 项目配置，专家白名单现在生效
+
+**Enhancements**
+- 🛡️ `feat(analyzer)` - AI 调用添加 3 次重试 + 指数退避机制，网络波动不再返回空结果
+- 🛡️ `feat(analyzer)` - 分片并发限流（Semaphore=3），避免触发 LLM provider 限流
+
+**Code Quality**
+- 🧹 `refactor(history)` - 删除 `save_record` 中未使用的 `record_file` 死代码
+- 🧹 `refactor(config)` - 移除未实现的 `auto_learn` 悬空配置字段
+- 🧹 `refactor(config)` - 移除未消费的 `skip_patterns`，统一使用 `ignore_paths`
+- 🧹 `fix(config)` - 添加 `tomllib`/`tomli` 兼容，支持 Python 3.10
+
+**Tests**
+- ✅ `test(cli)` - 新增 `test_cli.py`，17 个用例覆盖 review/learn/history 命令编排
+- ✅ `test(github)` - 新增 `test_github_client.py`，17 个用例覆盖 API 调用与标签去重
+
 ### v0.2.0 (阶段一：缺陷修复 + 基础补强)
 
 **Bug Fixes**
@@ -381,7 +402,6 @@ team_learning:
   max_prs: 20             # 最多分析多少个历史 PR
   max_comments: 100       # 最多提取多少条评论
   min_rule_weight: 0.3    # 最低规则权重阈值
-  auto_learn: false       # 是否在每次审查后自动学习
   rule_ttl_days: 30       # 学习规则的过期天数
 ```
 

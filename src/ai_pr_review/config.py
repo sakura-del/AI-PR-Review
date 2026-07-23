@@ -1,6 +1,9 @@
 import os
 import fnmatch
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -60,9 +63,6 @@ class AIConfig:
 @dataclass
 class AnalysisConfig:
     severity_threshold: str = "low"
-    skip_patterns: list[str] = field(
-        default_factory=lambda: ["*.lock", "*.generated.*", "package-lock.json"]
-    )
     max_file_size: int = 50000
     context_budget: int = 6000
     min_confidence: int = 2
@@ -181,7 +181,6 @@ class TeamLearningConfig:
     max_prs: int = 20
     max_comments: int = 100
     min_rule_weight: float = 0.3
-    auto_learn: bool = False
     rule_ttl_days: int = 30
 
 
@@ -264,7 +263,6 @@ def load_project_config(project_dir: Path | None = None) -> ProjectConfig:
             max_prs=int(tl.get("max_prs", 20)),
             max_comments=int(tl.get("max_comments", 100)),
             min_rule_weight=float(tl.get("min_rule_weight", 0.3)),
-            auto_learn=tl.get("auto_learn", False),
             rule_ttl_days=int(tl.get("rule_ttl_days", 30)),
         )
 
