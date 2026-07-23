@@ -148,6 +148,8 @@ class AIAnalyzer:
             experts=experts,
             custom_rules=self._custom_rules,
             team_rules=self._team_rules if self._team_rules else None,
+            cross_file_context=context.get("cross_file_context", ""),
+            call_chain_context=context.get("call_chain_context", ""),
         )
 
         raw_response = await self._call_ai(messages)
@@ -182,6 +184,8 @@ class AIAnalyzer:
             custom_rules=self._custom_rules,
             incremental_context=incremental_context,
             team_rules=self._team_rules if self._team_rules else None,
+            cross_file_context=context.get("cross_file_context", ""),
+            call_chain_context=context.get("call_chain_context", ""),
         )
 
         raw_response = await self._call_ai(messages)
@@ -238,6 +242,8 @@ class AIAnalyzer:
             experts=experts,
             custom_rules=self._custom_rules,
             team_rules=self._team_rules if self._team_rules else None,
+            cross_file_context=context.get("cross_file_context", ""),
+            call_chain_context=context.get("call_chain_context", ""),
         )
 
         full_response = ""
@@ -341,6 +347,8 @@ class AIAnalyzer:
             experts=experts,
             custom_rules=self._custom_rules,
             team_rules=self._team_rules if self._team_rules else None,
+            cross_file_context=context.get("cross_file_context", ""),
+            call_chain_context=context.get("call_chain_context", ""),
         )
 
         raw_response = await self._call_ai(messages)
