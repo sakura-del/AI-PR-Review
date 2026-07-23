@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 SHARD_FILE_THRESHOLD = 20
 SHARD_LINE_THRESHOLD = 5000
+# AI 调用最大重试次数
+AI_MAX_RETRIES = 3
+# 重试初始退避秒数
+AI_RETRY_BASE_DELAY = 1.0
+# 分片并发最大并行数
+SHARD_CONCURRENCY_LIMIT = 3
 
 
 def _normalize_severity(value: str) -> Severity:
@@ -104,7 +110,20 @@ class AIAnalyzer:
         self._merged_skills = merge_expert_config(self._project_config)
         self._custom_rules = self._project_config.custom_rules
         self._custom_expert_keys = list(self._project_config.custom_experts.keys())
+        # 项目配置中指定的专家白名单，为 None 表示不限制
+        self._enabled_experts = self._project_config.enabled_experts
         self._team_rules = self._load_team_rules(repo_url)
+
+    def _select_and_filter_experts(self, file_paths: list[str], hunks_content: str) -> list[str]:
+        """选择专家并按 enabled_experts 白名单过滤"""
+        expert_names = select_experts(file_paths, hunks_content, self._custom_expert_keys)
+        if self._enabled_experts is not None:
+            # 仅保留白名单中的专家，若过滤后为空则回退到白名单前两个
+            filtered = [e for e in expert_names if e in self._enabled_experts]
+            if not filtered:
+                filtered = self._enabled_experts[:2]
+            return filtered
+        return expert_names
 
     async def analyze(
         self,
@@ -119,7 +138,7 @@ class AIAnalyzer:
         hunks_content = "\n".join(
             h.content for f in parsed_diff.files for h in f.hunks
         )
-        expert_names = select_experts(file_paths, hunks_content, self._custom_expert_keys)
+        expert_names = self._select_and_filter_experts(file_paths, hunks_content)
         experts = get_expert_profiles(expert_names, self._merged_skills)
 
         messages = build_analysis_prompt(
@@ -152,7 +171,7 @@ class AIAnalyzer:
         hunks_content = "\n".join(
             h.content for f in incremental_parsed_diff.files for h in f.hunks
         )
-        expert_names = select_experts(file_paths, hunks_content, self._custom_expert_keys)
+        expert_names = self._select_and_filter_experts(file_paths, hunks_content)
         experts = get_expert_profiles(expert_names, self._merged_skills)
 
         messages = build_analysis_prompt(
@@ -183,24 +202,33 @@ class AIAnalyzer:
         return [r for r in rules if r.weight >= min_weight]
 
     async def _call_ai(self, messages: list[dict[str, str]]) -> str:
-        try:
-            response = await self._client.chat.completions.create(
-                model=self._config.ai.model,
-                messages=messages,
-                max_tokens=self._config.ai.max_tokens,
-                temperature=self._config.ai.temperature,
-            )
-            return response.choices[0].message.content or ""
-        except Exception as e:
-            logger.error(f"AI API call failed: {e}")
-            return ""
+        """调用 AI API，失败时自动重试（最多 AI_MAX_RETRIES 次，指数退避）"""
+        last_error = None
+        for attempt in range(AI_MAX_RETRIES):
+            try:
+                response = await self._client.chat.completions.create(
+                    model=self._config.ai.model,
+                    messages=messages,
+                    max_tokens=self._config.ai.max_tokens,
+                    temperature=self._config.ai.temperature,
+                )
+                return response.choices[0].message.content or ""
+            except Exception as e:
+                last_error = e
+                if attempt < AI_MAX_RETRIES - 1:
+                    delay = AI_RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(f"AI API call attempt {attempt + 1} failed: {e}, retrying in {delay}s")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"AI API call failed after {AI_MAX_RETRIES} attempts: {e}")
+        return ""
 
     async def analyze_stream(self, pr_metadata: PRMetadata, parsed_diff: ParsedDiff, severity_threshold: str = "low", focus: list[str] | None = None):
         context = self._context_builder.build_context(pr_metadata, parsed_diff)
 
         file_paths = [f.path for f in parsed_diff.files]
         hunks_content = "\n".join(h.content for f in parsed_diff.files for h in f.hunks)
-        expert_names = select_experts(file_paths, hunks_content, self._custom_expert_keys)
+        expert_names = self._select_and_filter_experts(file_paths, hunks_content)
         experts = get_expert_profiles(expert_names, self._merged_skills)
 
         messages = build_analysis_prompt(
@@ -234,6 +262,18 @@ class AIAnalyzer:
         result = self._apply_filters(result, severity_threshold, focus, self._config.analysis.min_confidence)
         yield ("__RESULT__", result)
 
+    # 用户输入别名到实际 type/expert 取值的映射
+    FOCUS_ALIASES: dict[str, str] = {
+        "risk": "logic",
+        "logic": "logic",
+        "security": "security",
+        "performance": "performance",
+        "quality": "quality",
+        "testing": "testing",
+        "architecture": "architecture",
+        "readability": "readability",
+    }
+
     def _apply_filters(
         self,
         result: AnalysisResult,
@@ -252,8 +292,13 @@ class AIAnalyzer:
         ]
 
         if focus:
+            # 将用户输入的别名统一映射为实际 type/expert 取值
+            normalized_focus = {
+                self.FOCUS_ALIASES.get(item.lower(), item.lower())
+                for item in focus
+            }
             filtered_findings = [
-                f for f in filtered_findings if f.type in focus or f.expert in focus
+                f for f in filtered_findings if f.type in normalized_focus or f.expert in normalized_focus
             ]
 
         result.findings = filtered_findings
@@ -286,7 +331,7 @@ class AIAnalyzer:
 
         file_paths = [f.path for f in shard.files]
         hunks_content = "\n".join(h.content for f in shard.files for h in f.hunks)
-        expert_names = select_experts(file_paths, hunks_content, self._custom_expert_keys)
+        expert_names = self._select_and_filter_experts(file_paths, hunks_content)
         experts = get_expert_profiles(expert_names, self._merged_skills)
 
         messages = build_analysis_prompt(
@@ -317,7 +362,14 @@ class AIAnalyzer:
         shards = self._shard_diff(parsed_diff)
         logger.info(f"Split into {len(shards)} shards")
 
-        tasks = [self._analyze_shard(pr_metadata, shard, severity_threshold, focus) for shard in shards]
+        # 使用 Semaphore 限制并发数，避免触发 provider 限流
+        semaphore = asyncio.Semaphore(SHARD_CONCURRENCY_LIMIT)
+
+        async def _limited_shard_analyze(shard):
+            async with semaphore:
+                return await self._analyze_shard(pr_metadata, shard, severity_threshold, focus)
+
+        tasks = [_limited_shard_analyze(shard) for shard in shards]
         results = await asyncio.gather(*tasks)
 
         return self._merge_shard_results(results)

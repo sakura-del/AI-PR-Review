@@ -50,7 +50,7 @@ def review(
     model: Optional[str] = typer.Option(None, "--model", "-m", help="AI model (deepseek/qwen/glm or full model name)"),
     no_comment: bool = typer.Option(False, "--no-comment", help="Do not post GitHub comments"),
     severity: str = typer.Option("low", "--severity", "-s", help="Minimum severity threshold (low/medium/high)"),
-    focus: Optional[str] = typer.Option(None, "--focus", "-f", help="Analysis dimensions (comma-separated: risk,quality,testing,security)"),
+    focus: Optional[str] = typer.Option(None, "--focus", "-f", help="Analysis dimensions (comma-separated: risk,security,performance,quality,testing,architecture,readability)"),
     stream: bool = typer.Option(False, "--stream", help="Stream output"),
     config_path: Optional[str] = typer.Option(None, "--config", "-c", help="Config file path"),
     review_action: str = typer.Option("COMMENT", "--review-action", help="GitHub review action (COMMENT/APPROVE/REQUEST_CHANGES)"),
