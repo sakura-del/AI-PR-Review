@@ -13,6 +13,9 @@ import json
 import logging
 from typing import Awaitable, Callable
 
+from ai_pr_review.metrics import get_registry
+from ai_pr_review.degradation import get_degradation_manager
+
 logger = logging.getLogger(__name__)
 
 # 触发审查的 PR 动作白名单（其余动作忽略，避免冗余审查）
@@ -90,33 +93,53 @@ class WebhookHandler:
 
         返回 (status_code, response_body) 供 HTTP server 使用
         """
+        registry = get_registry()
         event_type = headers.get("X-GitHub-Event", "")
-        signature = headers.get("X-Hub-Signature-256", "")
-
-        # 签名校验
-        if not verify_signature(body, signature, self._secret):
-            logger.warning("Webhook signature verification failed")
-            return 401, {"error": "invalid signature"}
-
-        # 解析 payload
+        action = ""
+        webhook_status = "error"
         try:
-            payload = json.loads(body.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.warning(f"Failed to parse webhook payload: {e}")
-            return 400, {"error": "invalid payload"}
+            # Level 3 降级：AI 服务不可用，拒绝 webhook 触发审查
+            if get_degradation_manager().current_level() >= 3:
+                logger.warning("Reject webhook due to degradation level 3")
+                webhook_status = "degraded"
+                return 503, {"error": "AI service degraded, please retry later", "level": 3}
 
-        event_info = parse_webhook_event(payload, event_type)
-        if event_info is None:
-            # 非目标事件，返回 200 但不做处理
-            return 200, {"status": "ignored", "event": event_type}
+            signature = headers.get("X-Hub-Signature-256", "")
 
-        # 异步触发审查（不 await，立即响应 webhook）
-        asyncio.create_task(self._dispatch_review(event_info))
-        return 200, {
-            "status": "accepted",
-            "pr_url": event_info["pr_url"],
-            "action": event_info["action"],
-        }
+            # 签名校验
+            if not verify_signature(body, signature, self._secret):
+                logger.warning("Webhook signature verification failed")
+                return 401, {"error": "invalid signature"}
+
+            # 解析 payload
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.warning(f"Failed to parse webhook payload: {e}")
+                return 400, {"error": "invalid payload"}
+
+            action = payload.get("action", "")
+
+            event_info = parse_webhook_event(payload, event_type)
+            if event_info is None:
+                # 非目标事件，返回 200 但不做处理
+                webhook_status = "ignored"
+                return 200, {"status": "ignored", "event": event_type}
+
+            # 异步触发审查（不 await，立即响应 webhook）
+            webhook_status = "accepted"
+            action = event_info["action"]
+            asyncio.create_task(self._dispatch_review(event_info))
+            return 200, {
+                "status": "accepted",
+                "pr_url": event_info["pr_url"],
+                "action": event_info["action"],
+            }
+        finally:
+            # 统一记录 webhook 事件指标（event/action/status 三维标签）
+            registry.counter(
+                "webhook_events_total", labels=("event", "action", "status")
+            ).inc(event=event_type, action=action, status=webhook_status)
 
     async def _dispatch_review(self, event_info: dict) -> None:
         """异步派发审查任务，异常不向外抛（避免 task 被静默销毁）"""
