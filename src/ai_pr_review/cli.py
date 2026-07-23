@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import time
 import logging
@@ -6,9 +7,17 @@ from typing import Optional
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 import typer
 
-from ai_pr_review.config import load_config
+from ai_pr_review.config import (
+    load_config,
+    load_config_strict,
+    validate_config,
+    DEFAULT_CONFIG_PATH,
+    MODEL_PRESETS,
+)
+from ai_pr_review.config_error import ConfigError
 from ai_pr_review.github_client import GitHubClient
 from ai_pr_review.diff_parser import parse_diff
 from ai_pr_review.analyzer import AIAnalyzer, SHARD_FILE_THRESHOLD, SHARD_LINE_THRESHOLD
@@ -43,6 +52,158 @@ app = typer.Typer(
 )
 console = Console()
 
+# 配置管理子命令组
+config_app = typer.Typer(help="配置管理")
+app.add_typer(config_app, name="config")
+
+
+def _mask_secret(value: str) -> str:
+    """脱敏处理：长度 > 4 时显示前 4 位 + ***，否则全 ***"""
+    if len(value) > 4:
+        return value[:4] + "***"
+    return "***"
+
+
+def _generate_toml_content(
+    provider: str,
+    api_key: str,
+    model: Optional[str] = None,
+    token: str = "",
+) -> str:
+    """根据 provider 生成 TOML 配置文本（避免引入 tomli_w 依赖）"""
+    preset = MODEL_PRESETS.get(provider, MODEL_PRESETS["deepseek"])
+    effective_model = model or preset["default_model"]
+    base_url = preset["default_base_url"]
+
+    # TOML 中数组格式的专家列表
+    experts_str = ", ".join(
+        f'"{e}"' for e in ["security", "architecture", "performance", "readability", "testing"]
+    )
+
+    return f"""# AI PR Review 配置文件
+# 注意：api_key 与 token 以明文存储，请妥善保管文件权限
+
+[github]
+# 也可通过 GITHUB_TOKEN 环境变量配置
+token = "{token}"
+
+[ai]
+provider = "{provider}"
+api_key = "{api_key}"
+model = "{effective_model}"
+base_url = "{base_url}"
+max_tokens = 8000
+temperature = 0.3
+
+[analysis]
+severity_threshold = "low"
+max_file_size = 50000
+context_budget = 6000
+min_confidence = 2
+
+[expert]
+enabled_experts = [{experts_str}]
+"""
+
+
+@config_app.command("init")
+def config_init(
+    provider: str = typer.Option("deepseek", "--provider", "-p", help="AI 提供商 (deepseek/qwen/glm)"),
+    api_key: str = typer.Option(..., "--api-key", "-k", help="API Key"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="模型名（留空使用 provider 默认）"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="输出文件路径（默认 ~/.ai-pr-review.toml）"),
+    force: bool = typer.Option(False, "--force", help="覆盖已存在文件"),
+):
+    """生成 ~/.ai-pr-review.toml 配置文件"""
+    output_path = Path(output) if output else DEFAULT_CONFIG_PATH
+
+    # 已存在且未传 --force 时拒绝覆盖
+    if output_path.exists() and not force:
+        console.print(f"[yellow]⚠️  配置文件已存在：{output_path}[/yellow]")
+        console.print("使用 --force 覆盖")
+        raise typer.Exit(code=1)
+
+    toml_content = _generate_toml_content(provider, api_key, model)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(toml_content, encoding="utf-8")
+
+    console.print(f"[green]✅ 配置文件已生成：{output_path}[/green]")
+    console.print("\n📋 下一步：")
+    console.print(f"  1. 编辑 {output_path} 调整参数")
+    console.print("  2. 运行 [bold]ai-pr-review config validate[/bold] 校验配置")
+    console.print(f"  3. 运行 [bold]ai-pr-review review <pr_url>[/bold] 开始审查")
+
+
+@config_app.command("validate")
+def config_validate(
+    config_path: Optional[str] = typer.Option(None, "--config", "-c", help="配置文件路径"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="模型名覆盖"),
+):
+    """校验配置并输出结果"""
+    try:
+        config = load_config(
+            Path(config_path) if config_path else None,
+            model_override=model,
+        )
+        validate_config(config)
+    except ConfigError as e:
+        console.print(f"[red]❌ 配置校验失败：[/red]")
+        console.print(f"  字段：{e.field}")
+        console.print(f"  错误：{e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[red]❌ 配置加载失败：{e}[/red]")
+        raise typer.Exit(code=1)
+
+    console.print("[green]✅ 配置校验通过[/green]")
+    console.print(f"  model:           {config.ai.model}")
+    console.print(f"  base_url:        {config.ai.base_url}")
+    console.print(f"  max_tokens:      {config.ai.max_tokens}")
+    console.print(f"  temperature:     {config.ai.temperature}")
+    console.print(f"  enabled_experts: {', '.join(config.expert.enabled_experts)}")
+
+
+@config_app.command("show")
+def config_show(
+    config_path: Optional[str] = typer.Option(None, "--config", "-c", help="配置文件路径"),
+    model: Optional[str] = typer.Option(None, "--model", "-m", help="模型名覆盖"),
+):
+    """展示生效配置（敏感字段脱敏）"""
+    try:
+        config = load_config(
+            Path(config_path) if config_path else None,
+            model_override=model,
+        )
+    except Exception as e:
+        console.print(f"[red]❌ 配置加载失败：{e}[/red]")
+        raise typer.Exit(code=1)
+
+    table = Table(title="生效配置", show_header=True, header_style="bold cyan")
+    table.add_column("Section", style="bold")
+    table.add_column("字段", style="dim")
+    table.add_column("值")
+
+    # GitHub section
+    table.add_row("github", "token", _mask_secret(config.github.token))
+
+    # AI section
+    table.add_row("ai", "provider", config.ai.provider)
+    table.add_row("ai", "api_key", _mask_secret(config.ai.api_key))
+    table.add_row("ai", "model", config.ai.model)
+    table.add_row("ai", "base_url", config.ai.base_url)
+    table.add_row("ai", "max_tokens", str(config.ai.max_tokens))
+    table.add_row("ai", "temperature", str(config.ai.temperature))
+
+    # Analysis section
+    table.add_row("analysis", "severity_threshold", config.analysis.severity_threshold)
+    table.add_row("analysis", "min_confidence", str(config.analysis.min_confidence))
+
+    # Expert section
+    table.add_row("expert", "enabled_experts", ", ".join(config.expert.enabled_experts))
+
+    console.print(table)
+
 
 @app.command()
 def review(
@@ -59,11 +220,35 @@ def review(
     no_cache: bool = typer.Option(False, "--no-cache", help="Skip cache, force fresh analysis"),
     multi_agent: bool = typer.Option(False, "--multi-agent", help="Multi-agent review: each expert independently reviews, results aggregated with consensus weighting"),
     no_adversarial: bool = typer.Option(False, "--no-adversarial", help="Disable adversarial verification of HIGH severity findings (only effective with --multi-agent)"),
+    rate_limit: int = typer.Option(5, "--rate-limit", help="AI 调用每秒限流（仅多 Agent 与分片路径生效，0=禁用）"),
+    log_format: str = typer.Option("text", "--log-format", help="日志格式 (text/json)"),
 ):
-    config = load_config(Path(config_path) if config_path else None, model_override=model)
+    # 初始化结构化日志（structured_logging 模块可能尚未创建，用 try/except 兜底）
+    try:
+        from ai_pr_review.structured_logging import setup_logging
+        setup_logging(format=log_format, level="INFO")
+    except ImportError:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    # 严格加载并校验配置（失败时友好退出）
+    try:
+        config = load_config_strict(
+            Path(config_path) if config_path else None,
+            model_override=model,
+        )
+    except ConfigError as e:
+        console.print(f"[red]❌ 配置校验失败：[/red]")
+        console.print(f"  字段：{e.field}")
+        console.print(f"  错误：{e}")
+        raise typer.Exit(code=1)
+
     config.analysis.min_confidence = min_confidence
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    # 限流配置：写入环境变量供 rate_limiter 读取，rate > 0 时初始化单例
+    os.environ["RATE_LIMIT"] = str(rate_limit)
+    if rate_limit > 0:
+        from ai_pr_review.rate_limiter import get_rate_limiter
+        get_rate_limiter(rate=rate_limit)
 
     console.print(Panel(f"🔍 AI PR Review", subtitle=f"{pr_url} | model: {config.ai.model}"))
 
@@ -329,8 +514,16 @@ def serve(
     port: int = typer.Option(8000, "--port", "-p", help="Port to listen on"),
     host: str = typer.Option("0.0.0.0", "--host", help="Host to bind"),
     webhook_secret: Optional[str] = typer.Option(None, "--webhook-secret", help="GitHub Webhook secret for signature verification"),
+    log_format: str = typer.Option("text", "--log-format", help="日志格式 (text/json)"),
 ):
     """启动 REST API 服务（含 webhook 端点）"""
+    # 初始化结构化日志
+    try:
+        from ai_pr_review.structured_logging import setup_logging
+        setup_logging(format=log_format, level="INFO")
+    except ImportError:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
     import asyncio as _asyncio
     from ai_pr_review.api_server import build_router, serve as _serve
 

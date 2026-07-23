@@ -240,7 +240,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_normal_flow(
         self,
         mock_load_config,
@@ -276,7 +276,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_no_comment_flag(
         self,
         mock_load_config,
@@ -309,7 +309,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_severity_medium_filters_low(
         self,
         mock_load_config,
@@ -342,7 +342,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_focus_security(
         self,
         mock_load_config,
@@ -376,7 +376,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_stream_output(
         self,
         mock_load_config,
@@ -413,7 +413,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_incremental_path(
         self,
         mock_load_config,
@@ -476,7 +476,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_incremental_no_history_falls_back_to_full(
         self,
         mock_load_config,
@@ -512,7 +512,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_incremental_same_sha_no_changes(
         self,
         mock_load_config,
@@ -571,7 +571,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_large_pr_triggers_sharding(
         self,
         mock_load_config,
@@ -608,7 +608,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_no_token_skips_comment(
         self,
         mock_load_config,
@@ -644,7 +644,7 @@ class TestReviewCommand:
     @patch("ai_pr_review.cli.AIAnalyzer")
     @patch("ai_pr_review.cli.GitHubClient")
     @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.load_config_strict")
     def test_review_diff_fetch_failure_exits_gracefully(
         self,
         mock_load_config,
