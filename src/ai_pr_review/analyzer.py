@@ -150,6 +150,8 @@ class AIAnalyzer:
             team_rules=self._team_rules if self._team_rules else None,
             cross_file_context=context.get("cross_file_context", ""),
             call_chain_context=context.get("call_chain_context", ""),
+            impact_graph_context=context.get("impact_graph_context", ""),
+            similar_reviews_context=context.get("similar_reviews_context", ""),
         )
 
         raw_response = await self._call_ai(messages)
@@ -186,6 +188,8 @@ class AIAnalyzer:
             team_rules=self._team_rules if self._team_rules else None,
             cross_file_context=context.get("cross_file_context", ""),
             call_chain_context=context.get("call_chain_context", ""),
+            impact_graph_context=context.get("impact_graph_context", ""),
+            similar_reviews_context=context.get("similar_reviews_context", ""),
         )
 
         raw_response = await self._call_ai(messages)
@@ -244,6 +248,8 @@ class AIAnalyzer:
             team_rules=self._team_rules if self._team_rules else None,
             cross_file_context=context.get("cross_file_context", ""),
             call_chain_context=context.get("call_chain_context", ""),
+            impact_graph_context=context.get("impact_graph_context", ""),
+            similar_reviews_context=context.get("similar_reviews_context", ""),
         )
 
         full_response = ""
@@ -349,6 +355,8 @@ class AIAnalyzer:
             team_rules=self._team_rules if self._team_rules else None,
             cross_file_context=context.get("cross_file_context", ""),
             call_chain_context=context.get("call_chain_context", ""),
+            impact_graph_context=context.get("impact_graph_context", ""),
+            similar_reviews_context=context.get("similar_reviews_context", ""),
         )
 
         raw_response = await self._call_ai(messages)

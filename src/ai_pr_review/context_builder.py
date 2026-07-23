@@ -68,6 +68,27 @@ class ContextBuilder:
                 if call_chain_tokens < remaining_budget // 3:  # 限制调用链上下文不超过剩余预算的1/3
                     context_parts["call_chain_context"] = call_chain
 
+        # 构建增量影响图上下文（受变更函数影响的闭包子图）
+        if remaining_budget > 800 and self._get_file_content:
+            from ai_pr_review.impact_graph import build_impact_graph_context
+            impact_graph = build_impact_graph_context(
+                parsed_diff, self._get_file_content, "", ""
+            )
+            if impact_graph:
+                impact_tokens = _estimate_tokens(impact_graph)
+                # 影响图限制在剩余预算的 1/4 内
+                if impact_tokens < remaining_budget // 4:
+                    context_parts["impact_graph_context"] = impact_graph
+
+        # 构建相似 PR 经验检索上下文（基于历史审查记录的轻量 RAG）
+        if remaining_budget > 800:
+            from ai_pr_review.knowledge_base import build_similar_reviews_context
+            similar_ctx = build_similar_reviews_context(pr_metadata, parsed_diff)
+            if similar_ctx:
+                similar_tokens = _estimate_tokens(similar_ctx)
+                if similar_tokens < remaining_budget // 4:
+                    context_parts["similar_reviews_context"] = similar_ctx
+
         return context_parts
 
     def _build_pr_context(self, metadata: PRMetadata) -> str:
