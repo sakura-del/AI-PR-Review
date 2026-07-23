@@ -9,6 +9,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from ai_pr_review.config_error import ConfigError, InvalidValueError, MissingRequiredError
+
 
 MODEL_PRESETS: dict[str, dict[str, str]] = {
     "deepseek": {
@@ -164,6 +166,104 @@ def load_config(config_path: Path | None = None, model_override: str | None = No
         config.ai.base_url = os.environ.get("AI_BASE_URL", config.ai.base_url)
         config.ai.model = effective_model
 
+    return config
+
+
+def validate_config(config: AppConfig) -> None:
+    """校验配置，失败时抛出对应的 ConfigError 子类。
+
+    校验规则：
+    - ai.api_key、ai.model 必填（空值抛 MissingRequiredError）
+    - ai.temperature ∈ [0, 2]
+    - analysis.min_confidence ∈ [1, 5]
+    - ai.max_tokens > 0
+    - expert.enabled_experts 中每个专家名必须存在于 EXPERT_SKILLS
+
+    聚合所有错误一次性抛出：单个错误抛出具体子类，多个错误用 ConfigError 汇总。
+    """
+    # 延迟导入避免与 expert_knowledge 产生循环依赖
+    from ai_pr_review.expert_knowledge import EXPERT_SKILLS
+
+    errors: list[ConfigError] = []
+
+    # ---- 必填项校验 ----
+    if not config.ai.api_key:
+        errors.append(MissingRequiredError(
+            field="ai.api_key",
+            suggestion="请配置 AI_API_KEY 环境变量，或在 ~/.ai-pr-review.toml 中设置 [ai] api_key",
+        ))
+    if not config.ai.model:
+        errors.append(MissingRequiredError(
+            field="ai.model",
+            suggestion="请配置 AI_MODEL 环境变量，或在 ~/.ai-pr-review.toml 中设置 [ai] model",
+        ))
+
+    # ---- 范围校验 ----
+    if not 0 <= config.ai.temperature <= 2:
+        errors.append(InvalidValueError(
+            field="ai.temperature",
+            current_value=config.ai.temperature,
+            expected="取值范围 [0, 2]",
+            suggestion="请将 temperature 设置为 0 到 2 之间的浮点数",
+        ))
+
+    if not 1 <= config.analysis.min_confidence <= 5:
+        errors.append(InvalidValueError(
+            field="analysis.min_confidence",
+            current_value=config.analysis.min_confidence,
+            expected="取值范围 [1, 5]",
+            suggestion="请将 min_confidence 设置为 1 到 5 之间的整数",
+        ))
+
+    if config.ai.max_tokens <= 0:
+        errors.append(InvalidValueError(
+            field="ai.max_tokens",
+            current_value=config.ai.max_tokens,
+            expected="正整数 (> 0)",
+            suggestion="请将 max_tokens 设置为大于 0 的整数",
+        ))
+
+    # ---- 专家名校验 ----
+    invalid_experts = [
+        expert for expert in config.expert.enabled_experts
+        if expert not in EXPERT_SKILLS
+    ]
+    if invalid_experts:
+        valid_experts = ", ".join(sorted(EXPERT_SKILLS.keys()))
+        errors.append(InvalidValueError(
+            field="expert.enabled_experts",
+            current_value=invalid_experts,
+            expected=f"已注册专家之一：{valid_experts}",
+            suggestion=f"请从已注册专家中选择：{valid_experts}",
+        ))
+
+    # ---- 聚合抛出 ----
+    if not errors:
+        return
+    # 单个错误直接抛出具体子类，便于调用方按类型捕获
+    if len(errors) == 1:
+        raise errors[0]
+    # 多个错误用基类 ConfigError 汇总全部信息
+    summary = "\n".join(f"- {err}" for err in errors)
+    raise ConfigError(
+        field="(multiple)",
+        current_value=None,
+        expected="见下方逐项说明",
+        suggestion=f"共发现 {len(errors)} 个配置错误：\n{summary}",
+    )
+
+
+def load_config_strict(
+    config_path: Path | None = None,
+    model_override: str | None = None,
+) -> AppConfig:
+    """加载并严格校验配置，校验失败时抛出 ConfigError。
+
+    在 load_config 基础上追加启动校验，供 CLI 入口使用以确保配置合法；
+    load_config 本身保持不变，避免破坏既有调用方与测试。
+    """
+    config = load_config(config_path=config_path, model_override=model_override)
+    validate_config(config)
     return config
 
 
