@@ -232,6 +232,20 @@ docker run --rm \
 
 ## 📋 变更日志
 
+### v0.4.0 (阶段三：上下文工程 + 智能化)
+
+**Features**
+- 🧠 `feat(context)` - 跨文件依赖上下文构建：自动提取变更文件的 import 语句，拉取被引用文件内容注入 AI 上下文
+- ⚡ `feat(cache)` - 结果缓存：基于 PR URL + head_sha 的缓存，相同 PR 重复分析秒返回，节省 token
+- 🔗 `feat(analyzer)` - AST 级函数调用链分析：识别变更函数的调用方和被调用方，增强跨文件逻辑理解
+- 📊 `feat(context)` - 智能文件优先级排序：按文件类型/变更规模/核心路径/路径深度四维加权排序
+
+**Tests**
+- ✅ `test(dependency)` - 新增 test_dependency_extractor.py，12 个用例
+- ✅ `test(cache)` - 新增 test_cache.py，8 个用例
+- ✅ `test(call_chain)` - 新增 test_call_chain.py，10 个用例
+- ✅ `test(priority)` - 新增 test_file_priority.py，16 个用例
+
 ### v0.3.0 (阶段二：质量加固 + 体验优化)
 
 **Bug Fixes**
