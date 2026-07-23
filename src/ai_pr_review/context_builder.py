@@ -1,6 +1,7 @@
 import tiktoken
 from ai_pr_review.models import ParsedDiff, FileDiff, PRMetadata
 from ai_pr_review.config import AppConfig
+from ai_pr_review.file_priority import sort_files_by_priority
 
 
 def _count_tokens(text: str, model: str = "gpt-4") -> int:
@@ -44,6 +45,50 @@ class ContextBuilder:
             if file_contexts:
                 context_parts["file_contents"] = file_contexts
 
+        # 构建跨文件依赖上下文
+        if remaining_budget > 500 and self._get_file_content:
+            from ai_pr_review.dependency_extractor import build_cross_file_context
+            cross_file = build_cross_file_context(
+                parsed_diff, self._get_file_content, "", "",
+                max_files=3, max_content_length=2000
+            )
+            if cross_file:
+                cross_tokens = _estimate_tokens(cross_file)
+                if _estimate_tokens(context_parts.get("file_contents", "")) + cross_tokens < remaining_budget:
+                    context_parts["cross_file_context"] = cross_file
+
+        # 构建函数调用链上下文
+        if remaining_budget > 1000 and self._get_file_content:
+            from ai_pr_review.call_chain import build_call_chain_context
+            call_chain = build_call_chain_context(
+                parsed_diff, self._get_file_content, "", ""
+            )
+            if call_chain:
+                call_chain_tokens = _estimate_tokens(call_chain)
+                if call_chain_tokens < remaining_budget // 3:  # 限制调用链上下文不超过剩余预算的1/3
+                    context_parts["call_chain_context"] = call_chain
+
+        # 构建增量影响图上下文（受变更函数影响的闭包子图）
+        if remaining_budget > 800 and self._get_file_content:
+            from ai_pr_review.impact_graph import build_impact_graph_context
+            impact_graph = build_impact_graph_context(
+                parsed_diff, self._get_file_content, "", ""
+            )
+            if impact_graph:
+                impact_tokens = _estimate_tokens(impact_graph)
+                # 影响图限制在剩余预算的 1/4 内
+                if impact_tokens < remaining_budget // 4:
+                    context_parts["impact_graph_context"] = impact_graph
+
+        # 构建相似 PR 经验检索上下文（基于历史审查记录的轻量 RAG）
+        if remaining_budget > 800:
+            from ai_pr_review.knowledge_base import build_similar_reviews_context
+            similar_ctx = build_similar_reviews_context(pr_metadata, parsed_diff)
+            if similar_ctx:
+                similar_tokens = _estimate_tokens(similar_ctx)
+                if similar_tokens < remaining_budget // 4:
+                    context_parts["similar_reviews_context"] = similar_ctx
+
         return context_parts
 
     def _build_pr_context(self, metadata: PRMetadata) -> str:
@@ -64,17 +109,17 @@ class ContextBuilder:
             "",
         ]
 
-        priority_files = sorted(
-            [f for f in parsed_diff.files if not f.is_binary and not f.is_generated],
-            key=lambda f: (f.change_type.value, -len(f.hunks)),
+        priority_files = sort_files_by_priority(
+            [f for f in parsed_diff.files if not f.is_binary and not f.is_generated]
         )
 
         available_budget = self._budget - 200
         used_budget = 0
 
-        for file_diff in priority_files:
+        # 使用 enumerate 避免 O(n²) 的 priority_files.index(file_diff) 调用
+        for idx, file_diff in enumerate(priority_files):
             if used_budget >= available_budget:
-                remaining = len(priority_files) - priority_files.index(file_diff)
+                remaining = len(priority_files) - idx
                 parts.append(f"... 还有{remaining}个文件(已超出上下文限制)")
                 break
 
@@ -116,9 +161,8 @@ class ContextBuilder:
         parts = []
         used = 0
 
-        priority_files = sorted(
-            [f for f in parsed_diff.files if not f.is_binary and not f.is_generated],
-            key=lambda f: f.change_type.value,
+        priority_files = sort_files_by_priority(
+            [f for f in parsed_diff.files if not f.is_binary and not f.is_generated]
         )
 
         for file_diff in priority_files:

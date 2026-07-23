@@ -117,6 +117,10 @@ def build_analysis_prompt(
     custom_rules: list[str] | None = None,
     incremental_context: dict | None = None,
     team_rules: list["TeamRule"] | None = None,
+    cross_file_context: str = "",
+    call_chain_context: str = "",
+    impact_graph_context: str = "",
+    similar_reviews_context: str = "",
 ) -> list[dict[str, str]]:
     expert_context = build_expert_context(experts)
 
@@ -129,6 +133,18 @@ def build_analysis_prompt(
 
     if file_context:
         user_content_parts.append("\n## 相关文件\n" + file_context)
+
+    if cross_file_context:
+        user_content_parts.append("\n" + cross_file_context)
+
+    if call_chain_context:
+        user_content_parts.append("\n" + call_chain_context)
+
+    if impact_graph_context:
+        user_content_parts.append("\n" + impact_graph_context)
+
+    if similar_reviews_context:
+        user_content_parts.append("\n" + similar_reviews_context)
 
     user_content_parts.append("\n## 审查规则\n" + expert_context)
 

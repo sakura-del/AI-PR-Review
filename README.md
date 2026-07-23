@@ -20,6 +20,8 @@
 - 🔄 **增量分析** - 仅分析自上次审查以来的新增变更，大幅节省 token
 - ⚙️ **项目配置** - `.ai-pr-review.yaml` 支持忽略路径和自定义规则
 - 🧠 **团队规范学习** - 从历史 PR 评论中学习团队审查模式，减少误报
+- 🎯 **增量影响图** - 基于 AST 闭包裁剪，仅检索受变更函数影响的调用子图（v0.5.0）
+- 📚 **RAG 知识库** - 基于 TF-IDF 从历史审查记录检索相似 PR 经验（v0.5.0）
 - 🐛 **行级评论精确回写** - 修复后真正发布到 PR 对应行号（v0.2.0）
 - ⏱️ **分析耗时记录** - 历史记录包含 `duration_seconds`（v0.2.0）
 - 🐳 **Docker 部署** - 多阶段构建镜像，开箱即用（v0.2.0）
@@ -231,6 +233,34 @@ docker run --rm \
 - `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `AI_MODEL`
 
 ## 📋 变更日志
+
+### v0.5.0 (阶段三 P2：增量影响图 + RAG 知识库)
+
+**Features**
+- 🎯 `feat(context)` - 增量影响图：基于 AST 闭包裁剪，仅检索受变更函数影响的 callers/callees 子图（深度 2 层），避免引入 tree-sitter 重依赖
+- 📚 `feat(context)` - RAG 知识库：基于 TF-IDF + 余弦相似度从历史审查缓存中检索 top-3 相似 PR 经验，纯标准库实现，无需向量数据库
+
+**Integration**
+- 🔗 `context_builder` 在剩余预算 > 800 时依次构建 impact_graph_context 与 similar_reviews_context
+- 🔗 `prompt_templates` 新增对应参数，`analyzer.py` 4 处调用全部传递新上下文
+
+**Tests**
+- ✅ `test(impact_graph)` - 新增 test_impact_graph.py，17 个用例覆盖闭包遍历/深度限制/语法错误容错
+- ✅ `test(knowledge_base)` - 新增 test_knowledge_base.py，19 个用例覆盖分词/TF-IDF/相似度检索
+
+### v0.4.0 (阶段三：上下文工程 + 智能化)
+
+**Features**
+- 🧠 `feat(context)` - 跨文件依赖上下文构建：自动提取变更文件的 import 语句，拉取被引用文件内容注入 AI 上下文
+- ⚡ `feat(cache)` - 结果缓存：基于 PR URL + head_sha 的缓存，相同 PR 重复分析秒返回，节省 token
+- 🔗 `feat(analyzer)` - AST 级函数调用链分析：识别变更函数的调用方和被调用方，增强跨文件逻辑理解
+- 📊 `feat(context)` - 智能文件优先级排序：按文件类型/变更规模/核心路径/路径深度四维加权排序
+
+**Tests**
+- ✅ `test(dependency)` - 新增 test_dependency_extractor.py，12 个用例
+- ✅ `test(cache)` - 新增 test_cache.py，8 个用例
+- ✅ `test(call_chain)` - 新增 test_call_chain.py，10 个用例
+- ✅ `test(priority)` - 新增 test_file_priority.py，16 个用例
 
 ### v0.3.0 (阶段二：质量加固 + 体验优化)
 
