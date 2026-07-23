@@ -57,6 +57,8 @@ def review(
     incremental: bool = typer.Option(False, "--incremental", "-i", help="Incremental analysis (only new changes since last review)"),
     min_confidence: int = typer.Option(2, "--min-confidence", help="Minimum confidence threshold (1-5)"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Skip cache, force fresh analysis"),
+    multi_agent: bool = typer.Option(False, "--multi-agent", help="Multi-agent review: each expert independently reviews, results aggregated with consensus weighting"),
+    no_adversarial: bool = typer.Option(False, "--no-adversarial", help="Disable adversarial verification of HIGH severity findings (only effective with --multi-agent)"),
 ):
     config = load_config(Path(config_path) if config_path else None, model_override=model)
     config.analysis.min_confidence = min_confidence
@@ -111,9 +113,9 @@ def review(
         except Exception:
             last_record = None
 
-    # 检查结果缓存（仅非增量、非流式时）
+    # 检查结果缓存（仅非增量、非流式、非多 Agent 时）
     cache_hit = False
-    if not no_cache and not incremental and not stream:
+    if not no_cache and not incremental and not stream and not multi_agent:
         from ai_pr_review.cache import get_cached_result
         try:
             current_sha = gh_client.get_pr_head_sha(pr_url)
@@ -162,7 +164,20 @@ def review(
             total_lines = parsed_diff.total_additions + parsed_diff.total_deletions
             should_shard = file_count > SHARD_FILE_THRESHOLD or total_lines > SHARD_LINE_THRESHOLD
 
-            if should_shard and not stream:
+            # 多 Agent 路径：独立专家并行审查 + 聚合 + 对抗式验证
+            if multi_agent:
+                console.print(f"🤖 Multi-agent review enabled (adversarial: {not no_adversarial})")
+                with console.status("Analyzing with multi-agent..."):
+                    result = asyncio.run(
+                        analyzer.analyze_multi_agent(
+                            pr_metadata=pr_metadata,
+                            parsed_diff=parsed_diff,
+                            severity_threshold=severity,
+                            focus=focus_list,
+                            enable_adversarial=not no_adversarial,
+                        )
+                    )
+            elif should_shard and not stream:
                 console.print(
                     f"📦 Large PR detected ({file_count} files, {total_lines} lines), "
                     f"sharding analysis..."
@@ -232,8 +247,8 @@ def review(
     elif not no_comment and not config.github.token:
         console.print("⚠️  No GitHub token configured, skipping comment post")
 
-    # 保存分析结果到缓存（跳过缓存命中、增量分析的情况）
-    if not no_cache and current_sha and not cache_hit and not is_incremental_analysis:
+    # 保存分析结果到缓存（跳过缓存命中、增量分析、多 Agent 的情况）
+    if not no_cache and current_sha and not cache_hit and not is_incremental_analysis and not multi_agent:
         from ai_pr_review.cache import save_cached_result
         save_cached_result(pr_url, current_sha, result)
 

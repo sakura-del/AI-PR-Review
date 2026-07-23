@@ -161,6 +161,75 @@ class AIAnalyzer:
 
         return result
 
+    async def analyze_multi_agent(
+        self,
+        pr_metadata: PRMetadata,
+        parsed_diff: ParsedDiff,
+        severity_threshold: str = "low",
+        focus: list[str] | None = None,
+        enable_adversarial: bool = True,
+    ) -> AnalysisResult:
+        """多 Agent 并行审查 + 结果聚合 + 对抗式验证
+
+        - 为每个被选中的专家独立调用 AI（聚焦单一领域）
+        - 并发调度 + 单点失败容错
+        - 聚合去重 + 共识加权
+        - 可选对抗式验证过滤 HIGH severity 误报
+        """
+        from ai_pr_review.multi_agent import run_multi_agent_review
+        from ai_pr_review.aggregator import aggregate_results
+        from ai_pr_review.adversarial import adversarial_filter
+
+        context = self._context_builder.build_context(pr_metadata, parsed_diff)
+
+        file_paths = [f.path for f in parsed_diff.files]
+        hunks_content = "\n".join(h.content for f in parsed_diff.files for h in f.hunks)
+        expert_names = self._select_and_filter_experts(file_paths, hunks_content)
+        experts = get_expert_profiles(expert_names, self._merged_skills)
+
+        if not experts:
+            # 无专家时回退到单 Agent
+            return await self.analyze(pr_metadata, parsed_diff, severity_threshold, focus)
+
+        context_extras = {
+            "cross_file_context": context.get("cross_file_context", ""),
+            "call_chain_context": context.get("call_chain_context", ""),
+            "impact_graph_context": context.get("impact_graph_context", ""),
+            "similar_reviews_context": context.get("similar_reviews_context", ""),
+        }
+
+        logger.info(f"Multi-agent review with {len(experts)} experts: {[e.name for e in experts]}")
+        agent_results = await run_multi_agent_review(
+            call_ai_fn=self._call_ai,
+            experts=experts,
+            pr_context=context.get("pr_metadata", ""),
+            diff_context=context.get("diff", ""),
+            file_context=context.get("file_contents", ""),
+            context_extras=context_extras,
+            parse_response_fn=parse_ai_response,
+        )
+
+        # 聚合多 Agent 结果
+        aggregated = aggregate_results(agent_results)
+        # 应用 severity / focus / confidence 过滤
+        aggregated = self._apply_filters(
+            aggregated, severity_threshold, focus, self._config.analysis.min_confidence
+        )
+
+        # 对抗式验证（仅 HIGH severity 触发二次 AI 调用）
+        if enable_adversarial and any(f.severity == Severity.HIGH for f in aggregated.findings):
+            logger.info(f"Adversarial verification on {sum(1 for f in aggregated.findings if f.severity == Severity.HIGH)} HIGH findings")
+            aggregated = await adversarial_filter(
+                call_ai_fn=self._call_ai,
+                result=aggregated,
+                # 二次过滤：对抗验证可能将 HIGH 降级为 LOW，需重新应用阈值
+            )
+            aggregated = self._apply_filters(
+                aggregated, severity_threshold, focus, self._config.analysis.min_confidence
+            )
+
+        return aggregated
+
     async def analyze_incremental(
         self,
         pr_metadata: PRMetadata,

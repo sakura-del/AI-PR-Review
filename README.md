@@ -22,6 +22,7 @@
 - 🧠 **团队规范学习** - 从历史 PR 评论中学习团队审查模式，减少误报
 - 🎯 **增量影响图** - 基于 AST 闭包裁剪，仅检索受变更函数影响的调用子图（v0.5.0）
 - 📚 **RAG 知识库** - 基于 TF-IDF 从历史审查记录检索相似 PR 经验（v0.5.0）
+- 🤖 **多 Agent 协作** - 每个专家独立审查，共识加权聚合，对抗式验证过滤误报（v0.6.0）
 - 🐛 **行级评论精确回写** - 修复后真正发布到 PR 对应行号（v0.2.0）
 - ⏱️ **分析耗时记录** - 历史记录包含 `duration_seconds`（v0.2.0）
 - 🐳 **Docker 部署** - 多阶段构建镜像，开箱即用（v0.2.0）
@@ -105,6 +106,12 @@ ai-pr-review review https://github.com/owner/repo/pull/123 --review-action REQUE
 
 # 增量分析（仅分析自上次审查以来的新增变更，大幅节省 token）
 ai-pr-review review https://github.com/owner/repo/pull/123 --incremental --no-comment
+
+# 多 Agent 协作（每个专家独立审查 + 共识加权 + 对抗式验证）
+ai-pr-review review https://github.com/owner/repo/pull/123 --multi-agent --no-comment
+
+# 多 Agent 协作但跳过对抗式验证（节省 token）
+ai-pr-review review https://github.com/owner/repo/pull/123 --multi-agent --no-adversarial --no-comment
 
 # 学习团队审查模式（从历史 PR 评论中提取规则）
 ai-pr-review learn https://github.com/owner/repo/pull/123
@@ -233,6 +240,22 @@ docker run --rm \
 - `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `AI_MODEL`
 
 ## 📋 变更日志
+
+### v0.6.0 (阶段四：多 Agent 协作 + 评审质量)
+
+**Features**
+- 🤖 `feat(analyzer)` - 多 Agent 并行审查：每个被选中的专家独立调用 AI（仅看自己领域 checklist），asyncio.gather + Semaphore 并发调度，单点失败容错
+- 🔗 `feat(aggregator)` - 结果聚合器：按 (file,line,type) 元组去重，共识加权（2+ Agent 报告同一问题 → severity 提升一档，confidence +1），多 Agent 建议合并去重
+- 🛡️ `feat(adversarial)` - 对抗式验证：对 HIGH severity 发现做二次 AI 调用验证，false positive 降级或剔除，confirmed 标记已确认发现，显著减少误报
+
+**CLI**
+- ⚙️ 新增 `--multi-agent` flag 启用多 Agent 协作模式
+- ⚙️ 新增 `--no-adversarial` flag 关闭对抗式验证（仅 multi-agent 模式生效）
+
+**Tests**
+- ✅ `test(multi_agent)` - 新增 test_multi_agent.py，11 个用例覆盖并行调度/异常容错/并发限制
+- ✅ `test(aggregator)` - 新增 test_aggregator.py，24 个用例覆盖去重/共识加权/排序
+- ✅ `test(adversarial)` - 新增 test_adversarial.py，24 个用例覆盖 verdict 解析/降级/剔除
 
 ### v0.5.0 (阶段三 P2：增量影响图 + RAG 知识库)
 
