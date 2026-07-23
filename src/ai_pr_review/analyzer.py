@@ -1,7 +1,9 @@
 import json
 import re
+import time
 import asyncio
 import logging
+import functools
 from openai import AsyncOpenAI
 from ai_pr_review.models import (
     ParsedDiff,
@@ -17,6 +19,9 @@ from ai_pr_review.context_builder import ContextBuilder
 from ai_pr_review.expert_knowledge import select_experts, get_expert_profiles, merge_expert_config
 from ai_pr_review.prompt_templates import build_analysis_prompt
 from ai_pr_review.team_rules import load_team_pattern, merge_team_rules
+from ai_pr_review.rate_limiter import get_rate_limiter
+from ai_pr_review.metrics import get_registry
+from ai_pr_review.degradation import get_degradation_manager
 
 logger = logging.getLogger(__name__)
 
@@ -199,8 +204,10 @@ class AIAnalyzer:
         }
 
         logger.info(f"Multi-agent review with {len(experts)} experts: {[e.name for e in experts]}")
+        # 多 Agent 并发路径启用全局限流：用 partial 绑定 use_rate_limit=True
+        rate_limited_call_ai = functools.partial(self._call_ai, use_rate_limit=True)
         agent_results = await run_multi_agent_review(
-            call_ai_fn=self._call_ai,
+            call_ai_fn=rate_limited_call_ai,
             experts=experts,
             pr_context=context.get("pr_metadata", ""),
             diff_context=context.get("diff", ""),
@@ -220,7 +227,7 @@ class AIAnalyzer:
         if enable_adversarial and any(f.severity == Severity.HIGH for f in aggregated.findings):
             logger.info(f"Adversarial verification on {sum(1 for f in aggregated.findings if f.severity == Severity.HIGH)} HIGH findings")
             aggregated = await adversarial_filter(
-                call_ai_fn=self._call_ai,
+                call_ai_fn=rate_limited_call_ai,
                 result=aggregated,
                 # 二次过滤：对抗验证可能将 HIGH 降级为 LOW，需重新应用阈值
             )
@@ -278,27 +285,55 @@ class AIAnalyzer:
         rules = merge_team_rules(team_pattern, self._custom_rules)
         return [r for r in rules if r.weight >= min_weight]
 
-    async def _call_ai(self, messages: list[dict[str, str]]) -> str:
-        """调用 AI API，失败时自动重试（最多 AI_MAX_RETRIES 次，指数退避）"""
+    async def _call_ai(self, messages: list[dict[str, str]], use_rate_limit: bool = False) -> str:
+        """调用 AI API，失败时自动重试（最多 AI_MAX_RETRIES 次，指数退避）
+
+        Args:
+            messages: OpenAI 消息列表
+            use_rate_limit: 是否启用全局限流，仅多 Agent 与分片并发路径启用，
+                            单次审查路径保持 False 不受限流影响。
+        """
+        # 多 Agent 与分片路径启用全局限流，避免并发触发 provider 限流
+        # RateLimiter 基于 Semaphore，acquire 自动管理令牌，无需手动 release
+        if use_rate_limit:
+            rate_limiter = get_rate_limiter()
+            await rate_limiter.acquire()
+
+        registry = get_registry()
+        registry.gauge("ai_concurrent_current").inc()
+        start_time = time.perf_counter()
+        status = "error"
         last_error = None
-        for attempt in range(AI_MAX_RETRIES):
-            try:
-                response = await self._client.chat.completions.create(
-                    model=self._config.ai.model,
-                    messages=messages,
-                    max_tokens=self._config.ai.max_tokens,
-                    temperature=self._config.ai.temperature,
-                )
-                return response.choices[0].message.content or ""
-            except Exception as e:
-                last_error = e
-                if attempt < AI_MAX_RETRIES - 1:
-                    delay = AI_RETRY_BASE_DELAY * (2 ** attempt)
-                    logger.warning(f"AI API call attempt {attempt + 1} failed: {e}, retrying in {delay}s")
-                    await asyncio.sleep(delay)
-                else:
-                    logger.error(f"AI API call failed after {AI_MAX_RETRIES} attempts: {e}")
-        return ""
+        try:
+            for attempt in range(AI_MAX_RETRIES):
+                try:
+                    response = await self._client.chat.completions.create(
+                        model=self._config.ai.model,
+                        messages=messages,
+                        max_tokens=self._config.ai.max_tokens,
+                        temperature=self._config.ai.temperature,
+                    )
+                    status = "success"
+                    # 成功路径：重置降级失败计数
+                    get_degradation_manager().record_success()
+                    return response.choices[0].message.content or ""
+                except Exception as e:
+                    last_error = e
+                    # 异常路径：记录降级失败（每次重试失败都计入）
+                    get_degradation_manager().record_failure()
+                    if attempt < AI_MAX_RETRIES - 1:
+                        delay = AI_RETRY_BASE_DELAY * (2 ** attempt)
+                        logger.warning(f"AI API call attempt {attempt + 1} failed: {e}, retrying in {delay}s")
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error(f"AI API call failed after {AI_MAX_RETRIES} attempts: {e}")
+            return ""
+        finally:
+            # 无论成功失败都更新指标，确保并发计数与耗时被记录
+            duration = time.perf_counter() - start_time
+            registry.gauge("ai_concurrent_current").dec()
+            registry.counter("ai_calls_total", labels=("status",)).inc(status=status)
+            registry.histogram("ai_call_duration_seconds").observe(duration)
 
     async def analyze_stream(self, pr_metadata: PRMetadata, parsed_diff: ParsedDiff, severity_threshold: str = "low", focus: list[str] | None = None):
         context = self._context_builder.build_context(pr_metadata, parsed_diff)
@@ -428,7 +463,7 @@ class AIAnalyzer:
             similar_reviews_context=context.get("similar_reviews_context", ""),
         )
 
-        raw_response = await self._call_ai(messages)
+        raw_response = await self._call_ai(messages, use_rate_limit=True)
         result = parse_ai_response(raw_response)
         result = self._apply_filters(result, severity_threshold, focus, self._config.analysis.min_confidence)
         return result

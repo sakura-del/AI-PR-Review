@@ -14,11 +14,14 @@ API 端点：
 """
 import asyncio
 import json
+import time
 import logging
 import urllib.parse
 from typing import Awaitable, Callable
 
 from ai_pr_review.webhook import WebhookHandler
+from ai_pr_review.metrics import get_registry
+from ai_pr_review.degradation import get_degradation_manager
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +47,11 @@ class APIRouter:
         return self._routes.get((method.upper(), path))
 
 
-def _build_response(status: int, body: dict | list | str) -> bytes:
+def _build_response(
+    status: int,
+    body: dict | list | str,
+    extra_headers: list[str] | None = None,
+) -> bytes:
     """构造 HTTP 响应字节流"""
     if isinstance(body, str):
         payload = body.encode("utf-8")
@@ -57,6 +64,7 @@ def _build_response(status: int, body: dict | list | str) -> bytes:
         200: "OK", 201: "Created", 202: "Accepted",
         400: "Bad Request", 401: "Unauthorized", 404: "Not Found",
         405: "Method Not Allowed", 500: "Internal Server Error",
+        503: "Service Unavailable",
     }.get(status, "OK")
 
     headers = [
@@ -65,6 +73,9 @@ def _build_response(status: int, body: dict | list | str) -> bytes:
         f"Content-Length: {len(payload)}",
         "Connection: close",
     ]
+    # 追加自定义响应头（如 Retry-After）
+    if extra_headers:
+        headers.extend(extra_headers)
     head = "\r\n".join(headers) + "\r\n\r\n"
     return head.encode("utf-8") + payload
 
@@ -138,7 +149,12 @@ def build_router(
     """
     router = APIRouter()
 
-    async def handle_review(headers, body) -> tuple[int, dict]:
+    async def handle_review(headers, body) -> tuple[int, dict] | tuple[int, dict, list[str]]:
+        # Level 3 降级：AI 服务不可用，直接拒绝新请求
+        if get_degradation_manager().current_level() >= 3:
+            logger.warning("Reject /api/review due to degradation level 3")
+            return 503, {"error": "AI service degraded, please retry later", "level": 3}, ["Retry-After: 60"]
+
         try:
             data = json.loads(body.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
@@ -193,6 +209,9 @@ async def handle_connection(
     router: APIRouter,
 ) -> None:
     """处理单个 TCP 连接"""
+    registry = get_registry()
+    start_time = time.perf_counter()
+    method, path, status = "", "", 0
     try:
         raw = await _read_request(reader)
         if raw is None:
@@ -200,27 +219,43 @@ async def handle_connection(
 
         parsed = _parse_request(raw)
         if parsed is None:
-            writer.write(_build_response(400, {"error": "bad request"}))
+            status = 400
+            writer.write(_build_response(status, {"error": "bad request"}))
             await writer.drain()
             return
 
         method, path, headers, body = parsed
         handler = router.match(method, path)
         if handler is None:
-            writer.write(_build_response(404, {"error": "not found", "path": path}))
+            status = 404
+            writer.write(_build_response(status, {"error": "not found", "path": path}))
             await writer.drain()
             return
 
         try:
-            status, resp_body = await handler(headers, body)
-            writer.write(_build_response(status, resp_body))
+            result = await handler(headers, body)
+            # 兼容二元组 (status, body) 与三元组 (status, body, extra_headers)
+            if len(result) == 3:
+                status, resp_body, extra_headers = result
+            else:
+                status, resp_body = result
+                extra_headers = None
+            writer.write(_build_response(status, resp_body, extra_headers=extra_headers))
         except Exception as e:
+            status = 500
             logger.error(f"Handler error for {method} {path}: {e}", exc_info=True)
-            writer.write(_build_response(500, {"error": "internal server error"}))
+            writer.write(_build_response(status, {"error": "internal server error"}))
         await writer.drain()
     except (ConnectionError, asyncio.IncompleteReadError):
         pass
     finally:
+        # 仅在拿到 method/path/status 时记录（避免空请求污染指标）
+        if method and path and status:
+            duration = time.perf_counter() - start_time
+            registry.counter(
+                "http_requests_total", labels=("method", "path", "status")
+            ).inc(method=method, path=path, status=str(status))
+            registry.histogram("http_request_duration_seconds").observe(duration)
         writer.close()
         try:
             await writer.wait_closed()
