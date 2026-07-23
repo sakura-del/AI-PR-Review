@@ -323,7 +323,6 @@ class TestTeamLearningConfig:
         assert config.max_prs == 20
         assert config.max_comments == 100
         assert config.min_rule_weight == 0.3
-        assert config.auto_learn is False
         assert config.rule_ttl_days == 30
 
     def test_parse_team_learning_from_yaml(self, tmp_path):
@@ -333,7 +332,6 @@ team_learning:
   max_prs: 30
   max_comments: 50
   min_rule_weight: 0.5
-  auto_learn: true
   rule_ttl_days: 60
 """
         yaml_file = tmp_path / ".ai-pr-review.yaml"
@@ -346,7 +344,6 @@ team_learning:
         assert config.team_learning.max_prs == 30
         assert config.team_learning.max_comments == 50
         assert config.team_learning.min_rule_weight == 0.5
-        assert config.team_learning.auto_learn is True
         assert config.team_learning.rule_ttl_days == 60
 
     def test_project_config_includes_team_learning(self):
