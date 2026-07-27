@@ -515,8 +515,13 @@ def serve(
     host: str = typer.Option("0.0.0.0", "--host", help="Host to bind"),
     webhook_secret: Optional[str] = typer.Option(None, "--webhook-secret", help="GitHub Webhook secret for signature verification"),
     log_format: str = typer.Option("text", "--log-format", help="日志格式 (text/json)"),
+    web: bool = typer.Option(False, "--web", help="[v0.10] 启动 FastAPI Web 模式（SPA Dashboard + GitHub OAuth）；默认启动 v0.9 asyncio server"),
 ):
-    """启动 REST API 服务（含 webhook 端点）"""
+    """启动 REST API 服务
+
+    默认模式（v0.9 兼容）：asyncio http server，JSON API
+    --web 模式（v0.10）：FastAPI + uvicorn，含 Web Dashboard SPA + GitHub OAuth
+    """
     # 初始化结构化日志
     try:
         from ai_pr_review.core.structured_logging import setup_logging
@@ -525,7 +530,6 @@ def serve(
         logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     import asyncio as _asyncio
-    from ai_pr_review.server.api_server import build_router, serve as _serve
 
     config = load_config()
 
@@ -561,21 +565,53 @@ def serve(
         from dataclasses import asdict
         return [asdict(r) for r in load_records()]
 
-    router = build_router(
-        review_fn=review_callback,
-        history_fn=history_callback,
-        webhook_secret=webhook_secret or "",
-    )
+    if web:
+        # ===== v0.10 Web 模式（FastAPI + uvicorn）=====
+        from ai_pr_review.server.web import create_app
+        import uvicorn
 
-    console.print(Panel(f"🚀 AI PR Review API Server", subtitle=f"{host}:{port}"))
-    console.print("Endpoints:")
-    console.print("  POST /api/review     - 触发 PR 审查")
-    console.print("  GET  /api/history    - 查询审查历史")
-    console.print("  GET  /api/health     - 健康检查")
-    console.print("  POST /webhook        - GitHub Webhook 入口")
-    console.print("\nPress Ctrl+C to stop.\n")
+        # 配置 review_handler 给 JobQueue
+        app = create_app(review_handler=review_callback)
 
-    _asyncio.run(_serve(router, host=host, port=port).serve_forever())
+        console.print(Panel(
+            f"🌐 AI PR Review Web Server",
+            subtitle=f"{host}:{port}",
+        ))
+        console.print("Web 模式（v0.10）:")
+        console.print("  GET  /               - SPA Dashboard 入口")
+        console.print("  GET  /auth/login     - GitHub OAuth 登录")
+        console.print("  GET  /auth/me        - 当前用户信息")
+        console.print("  GET  /api/stats      - Dashboard 统计")
+        console.print("  GET  /api/history    - 审查历史")
+        console.print("  GET  /api/jobs       - 任务列表")
+        console.print("  POST /api/jobs       - 提交 PR 审查（async）")
+        console.print("  GET  /api/health     - 健康检查")
+        console.print("  GET  /api/metrics    - 指标快照")
+        console.print("  GET  /api/docs       - Swagger UI")
+        if not webhook_secret:
+            console.print("[yellow]⚠️  /auth/login 需配置 GITHUB_OAUTH_CLIENT_ID / GITHUB_OAUTH_CLIENT_SECRET / SESSION_SECRET_KEY 环境变量[/yellow]")
+        console.print("\nPress Ctrl+C to stop.\n")
+
+        uvicorn.run(app, host=host, port=port, log_level="info")
+    else:
+        # ===== v0.9 默认模式（asyncio http server，向后兼容）=====
+        from ai_pr_review.server.api_server import build_router, serve as _serve
+
+        router = build_router(
+            review_fn=review_callback,
+            history_fn=history_callback,
+            webhook_secret=webhook_secret or "",
+        )
+
+        console.print(Panel(f"🚀 AI PR Review API Server", subtitle=f"{host}:{port}"))
+        console.print("Endpoints:")
+        console.print("  POST /api/review     - 触发 PR 审查")
+        console.print("  GET  /api/history    - 查询审查历史")
+        console.print("  GET  /api/health     - 健康检查")
+        console.print("  POST /webhook        - GitHub Webhook 入口")
+        console.print("\nPress Ctrl+C to stop.\n")
+
+        _asyncio.run(_serve(router, host=host, port=port).serve_forever())
 
 
 @app.command()
