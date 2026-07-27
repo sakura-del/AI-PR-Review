@@ -2,7 +2,7 @@
 import asyncio
 import json
 import pytest
-from ai_pr_review.adversarial import (
+from ai_pr_review.core.adversarial import (
     _build_verification_prompt,
     parse_verdict,
     verify_finding,
@@ -12,7 +12,7 @@ from ai_pr_review.adversarial import (
     ADVERSARIAL_CONCURRENCY,
     VERIFIABLE_SEVERITY,
 )
-from ai_pr_review.models import AnalysisResult, AnalysisSummary, Finding, Suggestion, Severity
+from ai_pr_review.core.models import AnalysisResult, AnalysisSummary, Finding, Suggestion, Severity
 
 
 def _make_finding(

@@ -1,6 +1,6 @@
 from pathlib import Path
-from ai_pr_review.diff_parser import parse_diff
-from ai_pr_review.models import ChangeType
+from ai_pr_review.core.diff_parser import parse_diff
+from ai_pr_review.core.models import ChangeType
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"

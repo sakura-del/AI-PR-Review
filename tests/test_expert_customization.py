@@ -1,15 +1,15 @@
 import pytest
 import tempfile
 from pathlib import Path
-from ai_pr_review.config import ProjectConfig, ExpertOverride, load_project_config
-from ai_pr_review.expert_knowledge import (
+from ai_pr_review.core.config import ProjectConfig, ExpertOverride, load_project_config
+from ai_pr_review.core.expert_knowledge import (
     EXPERT_SKILLS,
     ExpertProfile,
     merge_expert_config,
     get_expert_profiles,
     select_experts,
 )
-from ai_pr_review.prompt_templates import build_analysis_prompt
+from ai_pr_review.core.prompt_templates import build_analysis_prompt, build_analysis_prompt_legacy
 
 
 class TestExpertOverrideAppend:
@@ -172,7 +172,7 @@ custom_experts:
 class TestCustomRulesInPrompt:
     def test_custom_rules_appear_in_prompt(self):
         experts = [EXPERT_SKILLS["security"]]
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test PR",
             diff_context="diff content",
             file_context="",
@@ -186,7 +186,7 @@ class TestCustomRulesInPrompt:
 
     def test_no_custom_rules_omits_section(self):
         experts = [EXPERT_SKILLS["security"]]
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test PR",
             diff_context="diff content",
             file_context="",

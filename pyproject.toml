@@ -29,7 +29,15 @@ dev = [
 ai-pr-review = "ai_pr_review.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ai_pr_review"]
+packages = [
+    "src/ai_pr_review",
+    "src/ai_pr_review/core",
+    "src/ai_pr_review/data",
+    "src/ai_pr_review/data/persistence",
+    "src/ai_pr_review/platforms",
+    "src/ai_pr_review/server",
+    "src/ai_pr_review/cli",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

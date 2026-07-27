@@ -1,0 +1,108 @@
+# ============================================================
+# AI PR Review 项目级配置示例
+# ------------------------------------------------------------
+# 文件用途：本项目根目录下的 .ai-pr-review.yaml 用于自定义审查行为，
+#           可忽略指定路径、注入自定义规则、扩展/替换专家 checklist、
+#           新增自定义专家，并控制团队规范学习参数。
+#
+# 使用方法：
+#   1. 复制本文件为 .ai-pr-review.yaml
+#   2. 按需取消注释或修改字段值
+#   3. 通过 `ai-pr-review config validate` 校验配置合法性
+#
+# 字段对应 src/ai_pr_review/config.py 中的 ProjectConfig 类。
+# ============================================================
+
+# 忽略的文件路径模式列表（支持 glob 通配符与目录前缀）
+# 默认值：["*.lock", "*.generated.*", "package-lock.json", "vendor/", "node_modules/", "__pycache__/"]
+ignore_paths:
+  - "*.lock"
+  - "*.generated.*"
+  - "package-lock.json"
+  - "vendor/"
+  - "node_modules/"
+  - "__pycache__/"
+  - "dist/"
+  - "build/"
+
+# 自定义审查规则（自然语言描述，会注入到 AI 分析 prompt 中）
+# 默认值：[]（空列表）
+custom_rules:
+  - "禁止使用 any 类型"
+  - "所有公共函数必须有类型注解"
+  - "禁止直接调用 print()，必须使用日志框架"
+
+# 单次分析注入上下文的最大文件数（控制 token 消耗）
+# 默认值：10
+max_context_files: 10
+
+# 启用的专家白名单（覆盖全局默认专家列表）
+# 可选值：security / architecture / performance / readability / testing
+# 设为 null 或省略则使用全局默认专家列表
+# 默认值：null
+enabled_experts:
+  - security
+  - architecture
+  - performance
+
+# 覆盖或扩展内置专家的 checklist 与 red_flags
+# 每个专家支持四个字段：
+#   checklist_append   - 追加到内置 checklist（不替换）
+#   checklist_replace  - 完全替换内置 checklist（设为 null 表示不替换）
+#   red_flags_append   - 追加到内置 red_flags
+#   red_flags_replace - 完全替换内置 red_flags（设为 null 表示不替换）
+# 默认值：{}（空字典，不覆盖任何专家）
+expert_overrides:
+  security:
+    checklist_append:
+      - "内部 API 必须使用 mTLS 认证"
+      - "禁止在日志中记录 PII 数据"
+    checklist_replace: null
+    red_flags_append:
+      - "未经审批的外部服务调用"
+    red_flags_replace: null
+  readability:
+    checklist_append: []
+    checklist_replace:
+      - "遵循公司编码规范 v3.2"
+      - "所有 public 方法必须有文档注释"
+    red_flags_append: []
+    red_flags_replace: null
+
+# 添加全新的自定义专家（key 为专家标识符，value 为专家配置字典）
+# 必填字段：name / knowledge_source / checklist / red_flags
+# 默认值：{}（空字典）
+custom_experts:
+  company_compliance:
+    name: "合规审查"
+    knowledge_source: "公司内部合规标准"
+    checklist:
+      - "数据导出必须经过脱敏处理"
+      - "用户数据访问必须有审计日志"
+      - "第三方 SDK 需通过安全评审"
+    red_flags:
+      - "未经审批的第三方依赖"
+      - "缺少数据分类标注"
+
+# 团队规范学习配置（从历史 PR 评论中提取团队审查模式）
+team_learning:
+  # 是否启用团队规范学习
+  # 默认值：false
+  enabled: true
+
+  # 学习时分析的最大历史 PR 数量
+  # 默认值：20
+  max_prs: 20
+
+  # 学习时提取的最大评论条数
+  # 默认值：100
+  max_comments: 100
+
+  # 最低规则权重阈值（低于此值的规则会被过滤，范围 0.0-2.0）
+  # 默认值：0.3
+  min_rule_weight: 0.3
+
+  # 学习规则的过期天数（过期后需重新 learn）
+  # 默认值：30
+  rule_ttl_days: 30
+

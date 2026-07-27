@@ -3,17 +3,20 @@ import json
 from unittest.mock import MagicMock, patch
 from pathlib import Path
 
-from ai_pr_review.team_learner import TeamRule, TeamPattern, TeamLearner
-from ai_pr_review.team_rules import (
+from ai_pr_review.core.team_learner import TeamRule, TeamPattern, TeamLearner
+from ai_pr_review.data.team_rules import (
     save_team_pattern,
     load_team_pattern,
     merge_team_rules,
     _repo_key,
     TEAM_RULES_DIR,
 )
-from ai_pr_review.prompt_templates import build_analysis_prompt
-from ai_pr_review.expert_knowledge import EXPERT_SKILLS
-from ai_pr_review.config import TeamLearningConfig, ProjectConfig, load_project_config
+from ai_pr_review.core.prompt_templates import (
+    build_analysis_prompt,
+    build_analysis_prompt_legacy,
+)
+from ai_pr_review.core.expert_knowledge import EXPERT_SKILLS
+from ai_pr_review.core.config import TeamLearningConfig, ProjectConfig, load_project_config
 
 
 class TestTeamRule:
@@ -152,7 +155,7 @@ class TestParsePattern:
 
 class TestTeamRulesStorage:
     def test_save_and_load_team_pattern(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("ai_pr_review.team_rules.TEAM_RULES_DIR", tmp_path)
+        monkeypatch.setattr("ai_pr_review.data.team_rules.TEAM_RULES_DIR", tmp_path)
         rules = [TeamRule(category="security", description="test", example="", weight=1.5, source="learned", frequency=3)]
         pattern = TeamPattern(
             rules=rules,
@@ -169,7 +172,7 @@ class TestTeamRulesStorage:
         assert loaded.common_terms == ["LGTM"]
 
     def test_load_nonexistent_pattern(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("ai_pr_review.team_rules.TEAM_RULES_DIR", tmp_path)
+        monkeypatch.setattr("ai_pr_review.data.team_rules.TEAM_RULES_DIR", tmp_path)
         result = load_team_pattern("https://github.com/nonexistent/repo/pull/1")
         assert result is None
 
@@ -232,7 +235,7 @@ class TestTeamRulesInPrompt:
             TeamRule(category="security", description="No hardcoded secrets", example="os.environ.get()", weight=1.5, source="learned"),
             TeamRule(category="custom", description="All APIs need auth", example="", weight=1.5, source="manual"),
         ]
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test PR",
             diff_context="diff content",
             file_context="",
@@ -249,7 +252,7 @@ class TestTeamRulesInPrompt:
         team_rules = [
             TeamRule(category="security", description="test rule", example="", source="learned"),
         ]
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test",
             diff_context="diff",
             file_context="",
@@ -264,7 +267,7 @@ class TestTeamRulesInPrompt:
         team_rules = [
             TeamRule(category="custom", description="manual rule", example="", source="manual"),
         ]
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test",
             diff_context="diff",
             file_context="",
@@ -279,7 +282,7 @@ class TestTeamRulesInPrompt:
         team_rules = [
             TeamRule(category="security", description="weighted rule", example="", weight=1.8),
         ]
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test",
             diff_context="diff",
             file_context="",
@@ -291,7 +294,7 @@ class TestTeamRulesInPrompt:
 
     def test_no_team_rules_omits_section(self):
         experts = [EXPERT_SKILLS["security"]]
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test",
             diff_context="diff",
             file_context="",
@@ -305,7 +308,7 @@ class TestTeamRulesInPrompt:
         team_rules = [
             TeamRule(category="security", description="Use env vars", example="SECRET = os.environ.get('KEY')", source="learned"),
         ]
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test",
             diff_context="diff",
             file_context="",
@@ -337,7 +340,7 @@ team_learning:
         yaml_file = tmp_path / ".ai-pr-review.yaml"
         yaml_file.write_text(yaml_content, encoding="utf-8")
 
-        with patch("ai_pr_review.config.Path.cwd", return_value=tmp_path):
+        with patch("ai_pr_review.core.config.Path.cwd", return_value=tmp_path):
             config = load_project_config(tmp_path)
 
         assert config.team_learning.enabled is True
@@ -354,7 +357,7 @@ team_learning:
 
 class TestTeamPatternTTL:
     def test_expired_pattern_returns_none(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("ai_pr_review.team_rules.TEAM_RULES_DIR", tmp_path)
+        monkeypatch.setattr("ai_pr_review.data.team_rules.TEAM_RULES_DIR", tmp_path)
         pattern = TeamPattern(
             rules=[TeamRule(category="security", description="old rule", example="")],
             common_terms=[],
@@ -368,7 +371,7 @@ class TestTeamPatternTTL:
         assert result is None
 
     def test_fresh_pattern_returns_data(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("ai_pr_review.team_rules.TEAM_RULES_DIR", tmp_path)
+        monkeypatch.setattr("ai_pr_review.data.team_rules.TEAM_RULES_DIR", tmp_path)
         pattern = TeamPattern(
             rules=[TeamRule(category="security", description="fresh rule", example="")],
             common_terms=[],

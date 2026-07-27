@@ -1,14 +1,14 @@
 import pytest
 from unittest.mock import patch
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     AnalysisResult,
     AnalysisSummary,
     Finding,
     Suggestion,
     Severity,
 )
-from ai_pr_review.commenter import Commenter, LABEL_RULES
-from ai_pr_review.github_client import GitHubClient
+from ai_pr_review.server.commenter import Commenter, LABEL_RULES
+from ai_pr_review.platforms.github_client import GitHubClient
 
 
 def _make_result(findings: list[Finding] | None = None) -> AnalysisResult:

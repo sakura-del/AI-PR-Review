@@ -1,11 +1,11 @@
 """dependency_extractor 模块测试"""
-from ai_pr_review.dependency_extractor import (
+from ai_pr_review.core.dependency_extractor import (
     _detect_language,
     _resolve_import_path,
     extract_dependencies,
     build_cross_file_context,
 )
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     ParsedDiff,
     FileDiff,
     DiffHunk,
@@ -49,14 +49,14 @@ def _make_diff(files: list[FileDiff]) -> ParsedDiff:
 
 def test_extract_python_imports():
     """Python 文件应能提取 from...import 与 import 语句"""
-    content = "from foo.bar import baz\nimport os\nimport ai_pr_review.models"
+    content = "from foo.bar import baz\nimport os\nimport ai_pr_review.core.models"
     parsed = _make_diff([_make_file("src/main.py", content)])
     deps = extract_dependencies(parsed)
     assert "src/main.py" in deps
-    # foo.bar → foo/bar.py，os → os.py，ai_pr_review.models → ai_pr_review/models.py
+    # foo.bar → foo/bar.py，os → os.py，ai_pr_review.core.models → ai_pr_review/models.py
     assert "foo/bar.py" in deps["src/main.py"]
     assert "os.py" in deps["src/main.py"]
-    assert "ai_pr_review/models.py" in deps["src/main.py"]
+    assert "ai_pr_review/core/models.py" in deps["src/main.py"]
 
 
 def test_extract_javascript_imports():

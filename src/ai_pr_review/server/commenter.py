@@ -1,0 +1,107 @@
+import logging
+from ai_pr_review.platforms.github_client import GitHubClient
+from ai_pr_review.core.models import AnalysisResult, Severity
+from ai_pr_review.core.formatter import format_github_comment
+
+logger = logging.getLogger(__name__)
+
+LABEL_RULES = {
+    "ai-review:high-risk": lambda r: any(f.severity == Severity.HIGH for f in r.findings),
+    "ai-review:security": lambda r: any(f.type == "security" or f.expert == "security" for f in r.findings),
+    "ai-review:performance": lambda r: any(f.type == "performance" or f.expert == "performance" for f in r.findings),
+    "ai-review:needs-review": lambda r: len(r.findings) > 0,
+}
+
+
+class Commenter:
+    def __init__(self, client: GitHubClient):
+        self._client = client
+
+    def post_review(self, url: str, result: AnalysisResult, event: str = "COMMENT"):
+        body = format_github_comment(result)
+        try:
+            self._client.create_review(url, body=body, event=event)
+            logger.info(f"Successfully posted review to {url}")
+        except Exception as e:
+            logger.error(f"Failed to post review: {e}")
+            raise
+
+    def post_summary_comment(self, url: str, result: AnalysisResult):
+        body = format_github_comment(result)
+        try:
+            self._client.create_pr_comment(url, body=body)
+            logger.info(f"Successfully posted summary comment to {url}")
+        except Exception as e:
+            logger.error(f"Failed to post summary comment: {e}")
+            raise
+
+    def post_inline_comments(self, url: str, result: AnalysisResult, commit_id: str):
+        for finding in result.findings:
+            if finding.line > 0 and finding.file:
+                body = (
+                    f"**[{finding.severity.value.upper()}] {finding.title}** _({finding.expert})_\n\n"
+                    f"{finding.description}\n\n"
+                    f"💡 **建议**：{finding.suggestion}"
+                )
+                if finding.code_snippet:
+                    body += f"\n\n相关代码：`{finding.code_snippet}`"
+                try:
+                    self._client.create_review_comment(
+                        url,
+                        commit_id=commit_id,
+                        path=finding.file,
+                        line=finding.line,
+                        body=body,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to post inline comment for {finding.file}:L{finding.line}: {e}"
+                    )
+
+    def post_review_with_inline_comments(self, url: str, result: AnalysisResult, commit_id: str = "", event: str = "COMMENT"):
+        body = format_github_comment(result)
+        inline_comments = []
+
+        for finding in result.findings:
+            if finding.line > 0 and finding.file:
+                comment_body = (
+                    f"**[{finding.severity.value.upper()}] {finding.title}** _({finding.expert})_\n\n"
+                    f"{finding.description}\n\n"
+                    f"💡 **建议**：{finding.suggestion}"
+                )
+                if finding.code_snippet:
+                    comment_body += f"\n\n相关代码：`{finding.code_snippet}`"
+                inline_comments.append({
+                    "path": finding.file,
+                    "line": finding.line,
+                    "body": comment_body,
+                })
+
+        try:
+            if inline_comments:
+                self._client.create_review_with_comments(url, body=body, comments=inline_comments, event=event)
+            else:
+                self._client.create_review(url, body=body, event=event)
+            logger.info(f"Successfully posted review with {len(inline_comments)} inline comments to {url}")
+        except Exception as e:
+            logger.error(f"Failed to post review with inline comments: {e}")
+            raise
+
+    @staticmethod
+    def _determine_labels(result: AnalysisResult) -> list[str]:
+        labels = []
+        for label, condition in LABEL_RULES.items():
+            if condition(result):
+                labels.append(label)
+        return labels
+
+    def post_labels(self, url: str, result: AnalysisResult):
+        labels = self._determine_labels(result)
+        if not labels:
+            logger.info("No labels to apply")
+            return
+        try:
+            self._client.add_labels(url, labels)
+            logger.info(f"Applied labels to {url}: {labels}")
+        except Exception as e:
+            logger.warning(f"Failed to apply labels: {e}")

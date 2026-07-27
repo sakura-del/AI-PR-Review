@@ -1,10 +1,10 @@
 """dashboard 模块测试 — 覆盖统计计算、HTML 渲染、XSS 防护"""
 import pytest
-from ai_pr_review.dashboard import (
+from ai_pr_review.server.dashboard import (
     _escape, _truncate, compute_stats, _render_stat_cards,
     _render_table, render_dashboard,
 )
-from ai_pr_review.history import AnalysisRecord
+from ai_pr_review.data.history import AnalysisRecord
 
 
 def _make_record(
@@ -193,6 +193,6 @@ def test_render_dashboard_includes_refresh_button():
 def test_render_dashboard_accepts_none_loads_from_history():
     """records=None 时应调用 load_records（用空历史验证不报错）"""
     from unittest.mock import patch
-    with patch("ai_pr_review.dashboard.load_records", return_value=[]):
+    with patch("ai_pr_review.server.dashboard.load_records", return_value=[]):
         html_output = render_dashboard(None)
     assert "暂无审查记录" in html_output

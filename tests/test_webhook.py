@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import json
 import pytest
-from ai_pr_review.webhook import (
+from ai_pr_review.server.webhook import (
     verify_signature,
     parse_webhook_event,
     WebhookHandler,

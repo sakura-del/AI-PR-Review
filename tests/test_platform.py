@@ -1,8 +1,8 @@
 """platform 模块测试 — 覆盖 URL 识别、工厂函数、GitLab API 调用 mock"""
 import json
 import pytest
-from unittest.mock import patch, MagicMock
-from ai_pr_review.platform import (
+from unittest.mock import patch, MagicMock, AsyncMock
+from ai_pr_review.platforms.platform import (
     GitPlatform,
     GitHubPlatform,
     GitLabPlatform,
@@ -11,7 +11,7 @@ from ai_pr_review.platform import (
     is_github_url,
     create_platform,
 )
-from ai_pr_review.models import PRMetadata
+from ai_pr_review.core.models import PRMetadata
 
 
 # ===== URL 识别函数测试 =====
@@ -124,31 +124,38 @@ def test_github_platform_delegates_to_client():
 def _mock_response(json_data=None, text="", status_code=200, content_type="application/json"):
     mock = MagicMock()
     mock.status_code = status_code
-    mock.headers = {"content-type": content_type}
+    # headers 用 MagicMock + get()，这样 content_type 既是 dict-like 也支持 .get()
+    mock.headers = MagicMock()
+    mock.headers.get = MagicMock(return_value=content_type)
     mock.raise_for_status = MagicMock()
     if json_data is not None:
         mock.json.return_value = json_data
     mock.text = text
+
+
+def _setup_async_http_mock(mock_client_cls, response):
+    """配置 AsyncClient mock 返回指定 response"""
+    mock_http = MagicMock()
+    mock_http.get = AsyncMock(return_value=response)
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=None)
+    mock_client_cls.return_value = mock_http
+    return mock_http
     return mock
 
 
 def test_gitlab_get_pr_metadata():
     platform = GitLabPlatform(token="gl_token")
-    mock_resp = _mock_response(json_data={
+    expected = {
         "title": "Fix bug",
         "description": "desc",
         "author": {"username": "alice"},
         "target_branch": "main",
         "source_branch": "feature",
         "labels": ["bug"],
-    })
-
-    mock_client = MagicMock()
-    mock_client.__enter__ = MagicMock(return_value=mock_client)
-    mock_client.__exit__ = MagicMock(return_value=False)
-    mock_client.get = MagicMock(return_value=mock_resp)
-
-    with patch("ai_pr_review.platform.httpx.Client", return_value=mock_client):
+    }
+    # 直接 mock _request_json，避开 _run_async 与 pytest-asyncio 的 event loop 冲突
+    with patch.object(platform, "_request_json", AsyncMock(return_value=expected)):
         meta = platform.get_pr_metadata("https://gitlab.com/o/r/-/merge_requests/1")
 
     assert meta.title == "Fix bug"
@@ -161,14 +168,12 @@ def test_gitlab_get_pr_metadata():
 
 def test_gitlab_get_pr_diff_content_text():
     platform = GitLabPlatform(token="gl_token")
-    mock_resp = _mock_response(text="diff --git a/x b/x\n--- a/x\n+++ b/x\n", content_type="text/plain")
-
-    mock_client = MagicMock()
-    mock_client.__enter__ = MagicMock(return_value=mock_client)
-    mock_client.__exit__ = MagicMock(return_value=False)
-    mock_client.get = MagicMock(return_value=mock_resp)
-
-    with patch("ai_pr_review.platform.httpx.Client", return_value=mock_client):
+    text = "diff --git a/x b/x\n--- a/x\n+++ b/x\n"
+    # 直接 mock _request_text，返回 (text, content_type)
+    with patch.object(
+        platform, "_request_text",
+        AsyncMock(return_value=(text, "text/plain")),
+    ):
         diff = platform.get_pr_diff_content("https://gitlab.com/o/r/-/merge_requests/1")
 
     assert "diff --git" in diff
@@ -186,14 +191,11 @@ def test_gitlab_get_pr_diff_content_json_fallback():
             "diff": "@@ -1,1 +1,1 @@\n-old\n+new",
         }
     ]
-    mock_resp = _mock_response(json_data=diffs_json, content_type="application/json")
-
-    mock_client = MagicMock()
-    mock_client.__enter__ = MagicMock(return_value=mock_client)
-    mock_client.__exit__ = MagicMock(return_value=False)
-    mock_client.get = MagicMock(return_value=mock_resp)
-
-    with patch("ai_pr_review.platform.httpx.Client", return_value=mock_client):
+    # 直接 mock _request_text，返回 (json_string, content_type=application/json)
+    with patch.object(
+        platform, "_request_text",
+        AsyncMock(return_value=(json.dumps(diffs_json), "application/json")),
+    ):
         diff = platform.get_pr_diff_content("https://gitlab.com/o/r/-/merge_requests/1")
 
     assert "diff --git a/a.py b/a.py" in diff
@@ -203,14 +205,10 @@ def test_gitlab_get_pr_diff_content_json_fallback():
 
 def test_gitlab_get_file_content_success():
     platform = GitLabPlatform(token="gl_token")
-    mock_resp = _mock_response(text="print('hello')", content_type="text/plain")
-
-    mock_client = MagicMock()
-    mock_client.__enter__ = MagicMock(return_value=mock_client)
-    mock_client.__exit__ = MagicMock(return_value=False)
-    mock_client.get = MagicMock(return_value=mock_resp)
-
-    with patch("ai_pr_review.platform.httpx.Client", return_value=mock_client):
+    with patch.object(
+        platform, "_request_file_content",
+        AsyncMock(return_value="print('hello')"),
+    ):
         content = platform.get_file_content(
             "https://gitlab.com/o/r/-/merge_requests/1", "src/app.py", "main"
         )
@@ -220,49 +218,28 @@ def test_gitlab_get_file_content_success():
 
 def test_gitlab_get_file_content_404_returns_empty():
     platform = GitLabPlatform(token="gl_token")
-    mock_resp = _mock_response(status_code=404, text="")
-
-    mock_client = MagicMock()
-    mock_client.__enter__ = MagicMock(return_value=mock_client)
-    mock_client.__exit__ = MagicMock(return_value=False)
-    mock_client.get = MagicMock(return_value=mock_resp)
-
-    with patch("ai_pr_review.platform.httpx.Client", return_value=mock_client):
+    with patch.object(
+        platform, "_request_file_content",
+        AsyncMock(return_value=""),
+    ):
         content = platform.get_file_content(
             "https://gitlab.com/o/r/-/merge_requests/1", "missing.py", "main"
         )
-
     assert content == ""
 
 
 def test_gitlab_get_pr_head_sha():
     platform = GitLabPlatform(token="gl_token")
     versions = [{"head_commit_sha": "abc123", "id": 1}]
-    mock_resp = _mock_response(json_data=versions)
-
-    mock_client = MagicMock()
-    mock_client.__enter__ = MagicMock(return_value=mock_client)
-    mock_client.__exit__ = MagicMock(return_value=False)
-    mock_client.get = MagicMock(return_value=mock_resp)
-
-    with patch("ai_pr_review.platform.httpx.Client", return_value=mock_client):
+    with patch.object(platform, "_request_json", AsyncMock(return_value=versions)):
         sha = platform.get_pr_head_sha("https://gitlab.com/o/r/-/merge_requests/1")
-
     assert sha == "abc123"
 
 
 def test_gitlab_get_pr_head_sha_empty_versions():
     platform = GitLabPlatform(token="gl_token")
-    mock_resp = _mock_response(json_data=[])
-
-    mock_client = MagicMock()
-    mock_client.__enter__ = MagicMock(return_value=mock_client)
-    mock_client.__exit__ = MagicMock(return_value=False)
-    mock_client.get = MagicMock(return_value=mock_resp)
-
-    with patch("ai_pr_review.platform.httpx.Client", return_value=mock_client):
+    with patch.object(platform, "_request_json", AsyncMock(return_value=[])):
         sha = platform.get_pr_head_sha("https://gitlab.com/o/r/-/merge_requests/1")
-
     assert sha == ""
 
 

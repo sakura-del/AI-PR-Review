@@ -1,14 +1,14 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     AnalysisResult,
     AnalysisSummary,
     Finding,
     Suggestion,
     Severity,
 )
-from ai_pr_review.commenter import Commenter
-from ai_pr_review.github_client import GitHubClient
+from ai_pr_review.server.commenter import Commenter
+from ai_pr_review.platforms.github_client import GitHubClient
 
 
 def _make_client() -> GitHubClient:
@@ -167,6 +167,6 @@ class TestInlineComments:
         result = _make_result_with_findings()
 
         with patch.object(client, "create_review_with_comments"):
-            with patch("ai_pr_review.commenter.logger") as mock_logger:
+            with patch("ai_pr_review.server.commenter.logger") as mock_logger:
                 commenter.post_review_with_inline_comments("https://github.com/test/repo/pull/1", result)
                 mock_logger.info.assert_called()

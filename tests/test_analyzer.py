@@ -1,6 +1,6 @@
 import json
-from ai_pr_review.analyzer import parse_ai_response
-from ai_pr_review.models import Severity
+from ai_pr_review.core.analyzer import parse_ai_response
+from ai_pr_review.core.models import Severity
 
 
 def test_parse_ai_response_valid_json():

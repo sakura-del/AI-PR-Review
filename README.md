@@ -31,6 +31,12 @@
 - ⏱️ **分析耗时记录** - 历史记录包含 `duration_seconds`（v0.2.0）
 - 🐳 **Docker 部署** - 多阶段构建镜像，开箱即用（v0.2.0）
 - 🔄 **CI/CD 集成** - GitHub Actions 自动化测试与 AI 审查（v0.2.0）
+- 🛡️ **配置校验** - 启动时严格校验，错误配置给出修复建议（v0.8.0）
+- 📝 **结构化日志** - 支持 text/json 双格式，LOG_FORMAT 环境变量切换（v0.8.0）
+- 📊 **Metrics 指标** - Counter/Histogram/Gauge 三类指标，埋点 AI/HTTP/Webhook（v0.8.0）
+- 🚦 **全局限流** - Token bucket 限流器，多 Agent 与分片路径生效（v0.8.0）
+- 🔌 **分级降级** - AI 不可用时三级降级：缓存→空结果→503 拒绝（v0.8.0）
+- ⚙️ **config 子命令** - `config init/validate/show` 配置管理（v0.8.0）
 
 ## 🚀 快速开始
 
@@ -135,6 +141,14 @@ ai-pr-review dashboard --output dashboard.html --port 8001
 
 # 审查 GitLab MR（自动识别平台）
 ai-pr-review review https://gitlab.com/owner/repo/-/merge_requests/1 --no-comment
+
+# 配置管理
+ai-pr-review config init --provider deepseek --api-key sk-xxx
+ai-pr-review config validate
+ai-pr-review config show
+
+# 生产化参数
+ai-pr-review review <pr_url> --rate-limit 3 --log-format json --multi-agent
 ```
 
 ### 命令行参数
@@ -152,6 +166,8 @@ ai-pr-review review https://gitlab.com/owner/repo/-/merge_requests/1 --no-commen
 | `--limit` | `-n` | 历史记录显示数量 (history 子命令) | 20 |
 | `--max-prs` | | 学习时分析的最大 PR 数量 (learn 子命令) | 20 |
 | `--force` | `-f` | 强制重新学习，忽略缓存 (learn 子命令) | false |
+| `--rate-limit` | | AI 调用每秒限流（仅多 Agent 与分片路径） | 5 |
+| `--log-format` | | 日志格式 (text/json) | text |
 
 ## 📁 项目结构
 
@@ -223,6 +239,62 @@ pytest tests/ -v
 pytest tests/ -v --cov=ai_pr_review
 ```
 
+## 🏭 生产部署
+
+### 配置校验
+
+启动时自动校验配置，错误配置会给出明确修复建议：
+
+```bash
+# 主动校验配置
+ai-pr-review config validate
+
+# 缺少 API key 时的错误示例：
+# ❌ 配置校验失败：
+# 字段: ai.api_key
+# 建议: 请配置 AI_API_KEY 环境变量，或在 ~/.ai-pr-review.toml 中设置 [ai] api_key
+```
+
+### 限流与降级
+
+多 Agent 与分片路径默认启用限流（每秒 5 次 AI 调用），可通过 `--rate-limit` 调整：
+
+```bash
+# 降低限流以保护 LLM provider 配额
+ai-pr-review review <pr_url> --multi-agent --rate-limit 2
+```
+
+AI 不可用时自动分级降级：
+- **Level 1**（连续失败 5 次）：返回过期缓存结果
+- **Level 2**（连续失败 10 次）：返回空结果，标记 `[降级模式]`
+- **Level 3**（连续失败 15 次）：Webhook/API 返回 503 拒绝服务
+
+### 可观测性
+
+#### 结构化日志
+
+```bash
+# JSON 格式日志（便于日志采集系统）
+ai-pr-review review <pr_url> --log-format json
+
+# 输出示例：
+# {"timestamp":"2026-07-23T10:00:00+00:00","level":"INFO","logger":"ai_pr_review.analyzer","message":"AI call success"}
+```
+
+#### Metrics 指标
+
+内置 Counter/Histogram/Gauge 三类指标，埋点覆盖：
+- `ai_calls_total{status}` - AI 调用次数（success/error）
+- `ai_call_duration_seconds` - AI 调用耗时分布
+- `ai_concurrent_current` - 当前并发 AI 调用数
+- `http_requests_total{method,path,status}` - HTTP 请求次数
+- `webhook_events_total{event,action,status}` - Webhook 事件次数
+
+通过 REST API 获取指标快照：
+```bash
+curl http://localhost:8000/api/metrics
+```
+
 ## 🐳 Docker 部署
 
 ```bash
@@ -253,6 +325,24 @@ docker run --rm \
 - `OPENAI_API_KEY` / `OPENAI_BASE_URL` / `AI_MODEL`
 
 ## 📋 变更日志
+
+### v0.8.0 (阶段六：生产化加固 + 集成体验优化)
+
+**Features**
+- 🛡️ `feat(config)` - 配置严格校验：`validate_config()` 校验必填项/类型/范围/专家名，`load_config_strict()` 供 CLI 入口，错误配置给出修复建议
+- 📝 `feat(logging)` - 结构化日志：`structured_logging.py` 支持 text/json 双格式，`--log-format` 参数与 `LOG_FORMAT` 环境变量
+- 📊 `feat(metrics)` - Metrics 收集：Counter/Histogram/Gauge 三类指标 + MetricsRegistry 单例，埋点 AI 调用/HTTP 请求/Webhook 事件
+- 🚦 `feat(rate-limit)` - 全局限流器：Token bucket + asyncio.Semaphore，多 Agent 与分片路径生效，`--rate-limit` 参数
+- 🔌 `feat(degradation)` - 分级降级：DegradationManager 单例，连续失败 5/10/15 次触发 Level 1/2/3 降级（缓存→空结果→503）
+- ⚙️ `feat(cli)` - config 子命令：`config init` 生成配置、`config validate` 校验、`config show` 脱敏展示
+
+**Tests**
+- ✅ `test(config)` - 22 用例：配置校验各种错误场景
+- ✅ `test(logging)` - 6 用例：text/json 格式与环境变量
+- ✅ `test(metrics)` - 13 用例：三类指标与埋点集成
+- ✅ `test(rate-limiter)` - 9 用例：限流生效与并发控制
+- ✅ `test(degradation)` - 9 用例：三级降级触发
+- ✅ `test(cli-config)` - 9 用例：config 子命令
 
 ### v0.7.0 (阶段五：生态集成 + 平台化)
 

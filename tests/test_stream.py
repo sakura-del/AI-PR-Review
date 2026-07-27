@@ -1,14 +1,14 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     ParsedDiff,
     FileDiff,
     DiffHunk,
     ChangeType,
     PRMetadata,
 )
-from ai_pr_review.analyzer import AIAnalyzer
-from ai_pr_review.config import AppConfig
+from ai_pr_review.core.analyzer import AIAnalyzer
+from ai_pr_review.core.config import AppConfig
 
 
 def _make_config() -> AppConfig:
@@ -72,7 +72,7 @@ async def test_stream_yields_content():
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response([mock_chunk]))
 
-    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+    with patch("ai_pr_review.core.analyzer.AsyncOpenAI", return_value=mock_client):
         analyzer = AIAnalyzer(config=config)
 
         chunks = []
@@ -93,7 +93,7 @@ async def test_stream_handles_error():
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API error"))
 
-    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+    with patch("ai_pr_review.core.analyzer.AsyncOpenAI", return_value=mock_client):
         analyzer = AIAnalyzer(config=config)
 
         chunks = []
@@ -116,7 +116,7 @@ async def test_stream_empty_response():
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response([mock_chunk_empty]))
 
-    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+    with patch("ai_pr_review.core.analyzer.AsyncOpenAI", return_value=mock_client):
         analyzer = AIAnalyzer(config=config)
 
         chunks = []
@@ -144,7 +144,7 @@ async def test_stream_multiple_chunks():
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response(mock_chunks))
 
-    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+    with patch("ai_pr_review.core.analyzer.AsyncOpenAI", return_value=mock_client):
         analyzer = AIAnalyzer(config=config)
 
         collected = []
@@ -172,7 +172,7 @@ async def test_stream_applies_filters():
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response(mock_chunks))
 
-    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+    with patch("ai_pr_review.core.analyzer.AsyncOpenAI", return_value=mock_client):
         analyzer = AIAnalyzer(config=config)
 
         collected = []
@@ -215,7 +215,7 @@ async def test_shards_stream_yields_headers_and_content():
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response([mock_chunk]))
 
-    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+    with patch("ai_pr_review.core.analyzer.AsyncOpenAI", return_value=mock_client):
         analyzer = AIAnalyzer(config=config)
 
         collected = []
@@ -243,7 +243,7 @@ async def test_shards_stream_small_pr_falls_through():
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(return_value=_mock_stream_response([mock_chunk]))
 
-    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+    with patch("ai_pr_review.core.analyzer.AsyncOpenAI", return_value=mock_client):
         analyzer = AIAnalyzer(config=config)
 
         collected = []

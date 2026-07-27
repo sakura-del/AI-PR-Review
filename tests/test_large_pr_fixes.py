@@ -1,7 +1,7 @@
 import json
 import re
-from ai_pr_review.analyzer import _normalize_severity, parse_ai_response, AIAnalyzer
-from ai_pr_review.models import (
+from ai_pr_review.core.analyzer import _normalize_severity, parse_ai_response, AIAnalyzer
+from ai_pr_review.core.models import (
     Severity,
     AnalysisResult,
     AnalysisSummary,
@@ -13,9 +13,9 @@ from ai_pr_review.models import (
     ChangeType,
     PRMetadata,
 )
-from ai_pr_review.prompt_templates import OUTPUT_SCHEMA, FEW_SHOT_EXAMPLE
-from ai_pr_review.context_builder import ContextBuilder
-from ai_pr_review.config import AppConfig, AIConfig, AnalysisConfig, GitHubConfig
+from ai_pr_review.core.prompt_templates import OUTPUT_SCHEMA, FEW_SHOT_EXAMPLE
+from ai_pr_review.core.context_builder import ContextBuilder
+from ai_pr_review.core.config import AppConfig, AIConfig, AnalysisConfig, GitHubConfig
 
 
 def test_normalize_severity_p0():

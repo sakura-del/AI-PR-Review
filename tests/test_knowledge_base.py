@@ -3,7 +3,7 @@ import json
 import pytest
 from pathlib import Path
 from unittest.mock import patch
-from ai_pr_review.knowledge_base import (
+from ai_pr_review.core.knowledge_base import (
     _tokenize,
     _build_tfidf_vectors,
     _to_tfidf_vector,
@@ -14,7 +14,7 @@ from ai_pr_review.knowledge_base import (
     search_similar_reviews,
     build_similar_reviews_context,
 )
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     ParsedDiff,
     FileDiff,
     DiffHunk,
@@ -164,7 +164,7 @@ def test_build_query_text_includes_paths():
 # ===== _load_knowledge_base 测试 =====
 
 def test_load_knowledge_base_handles_missing_dir(tmp_path):
-    with patch("ai_pr_review.knowledge_base.KB_DIR", tmp_path / "nonexistent"):
+    with patch("ai_pr_review.core.knowledge_base.KB_DIR", tmp_path / "nonexistent"):
         assert _load_knowledge_base() == []
 
 
@@ -181,7 +181,7 @@ def test_load_knowledge_base_filters_invalid(tmp_path):
     (tmp_path / "broken.json").write_text("not json", encoding="utf-8")
     (tmp_path / "empty.json").write_text(json.dumps({}), encoding="utf-8")
 
-    with patch("ai_pr_review.knowledge_base.KB_DIR", tmp_path):
+    with patch("ai_pr_review.core.knowledge_base.KB_DIR", tmp_path):
         records = _load_knowledge_base()
     assert len(records) == 2
     intents = {r["summary"]["intent"] for r in records}
@@ -197,7 +197,7 @@ def _seed_kb(tmp_path, records: list[dict]):
 
 
 def test_search_similar_returns_empty_when_kb_too_small(tmp_path):
-    with patch("ai_pr_review.knowledge_base.KB_DIR", tmp_path):
+    with patch("ai_pr_review.core.knowledge_base.KB_DIR", tmp_path):
         _seed_kb(tmp_path, [{
             "summary": {"intent": "solo"},
             "findings": [{"title": "x"}],
@@ -227,7 +227,7 @@ def test_search_similar_returns_ranked_results(tmp_path):
         },
     ]
     _seed_kb(tmp_path, records)
-    with patch("ai_pr_review.knowledge_base.KB_DIR", tmp_path):
+    with patch("ai_pr_review.core.knowledge_base.KB_DIR", tmp_path):
         pr = _make_pr(title="Fix login bug", description="auth module")
         diff = _make_diff("src/auth/login.py")
         results = search_similar_reviews(pr, diff, top_k=3)
@@ -252,7 +252,7 @@ def test_build_similar_reviews_context_returns_string(tmp_path):
         },
     ]
     _seed_kb(tmp_path, records)
-    with patch("ai_pr_review.knowledge_base.KB_DIR", tmp_path):
+    with patch("ai_pr_review.core.knowledge_base.KB_DIR", tmp_path):
         pr = _make_pr(title="Fix login", description="auth")
         diff = _make_diff("src/auth.py")
         ctx = build_similar_reviews_context(pr, diff)
@@ -262,7 +262,7 @@ def test_build_similar_reviews_context_returns_string(tmp_path):
 
 
 def test_build_similar_reviews_context_empty_when_no_kb(tmp_path):
-    with patch("ai_pr_review.knowledge_base.KB_DIR", tmp_path / "noexist"):
+    with patch("ai_pr_review.core.knowledge_base.KB_DIR", tmp_path / "noexist"):
         pr = _make_pr()
         diff = _make_diff()
         assert build_similar_reviews_context(pr, diff) == ""
@@ -274,7 +274,7 @@ def test_search_similar_respects_top_k(tmp_path):
         for i in range(5)
     ]
     _seed_kb(tmp_path, records)
-    with patch("ai_pr_review.knowledge_base.KB_DIR", tmp_path):
+    with patch("ai_pr_review.core.knowledge_base.KB_DIR", tmp_path):
         pr = _make_pr(title="docs")
         diff = _make_diff("README.md")
         results = search_similar_reviews(pr, diff, top_k=2, min_similarity=0.0)

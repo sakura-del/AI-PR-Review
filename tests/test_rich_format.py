@@ -1,14 +1,14 @@
 import pytest
 from io import StringIO
 from rich.console import Console
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     AnalysisResult,
     AnalysisSummary,
     Finding,
     Suggestion,
     Severity,
 )
-from ai_pr_review.formatter import format_rich, format_terminal
+from ai_pr_review.core.formatter import format_rich, format_terminal
 
 
 def _make_result(findings_count: int = 3, suggestions_count: int = 2) -> AnalysisResult:

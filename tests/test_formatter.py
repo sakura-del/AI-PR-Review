@@ -1,5 +1,5 @@
-from ai_pr_review.formatter import format_terminal, format_github_comment
-from ai_pr_review.models import (
+from ai_pr_review.core.formatter import format_terminal, format_github_comment
+from ai_pr_review.core.models import (
     AnalysisResult,
     AnalysisSummary,
     Finding,
