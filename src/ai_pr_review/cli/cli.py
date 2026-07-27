@@ -28,6 +28,28 @@ from ai_pr_review.core.incremental import IncrementalAnalyzer
 from ai_pr_review.core.team_learner import TeamLearner
 from ai_pr_review.data.team_rules import save_team_pattern, load_team_pattern
 
+
+def _run_async(coro):
+    """在隔离的 event loop 中运行协程
+
+    - 同步 CLI 入口（无 loop）：asyncio.run
+    - 已在 async 上下文（web 测试/JobQueue worker）：new_event_loop 隔离
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        # 无 running loop，用 asyncio.run
+        return asyncio.run(coro)
+
+    # 已有 running loop（如 pytest-asyncio 测试或 uvicorn worker 调 CLI）：
+    # 用独立 event loop 隔离避免 RuntimeError
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 async def _run_stream(stream_gen):
     result = None
     async for chunk in stream_gen:
