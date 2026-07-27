@@ -150,6 +150,15 @@ def load_config(config_path: Path | None = None, model_override: str | None = No
 
     config.github.token = os.environ.get("GITHUB_TOKEN", config.github.token)
 
+    # 优先级：
+    # 1. model_override 参数（CLI --model）
+    # 2. AI_MODEL 通用 env（与 provider 无关）
+    # 3. 选定 provider 的专属 MODEL env（DEEPSEEK_MODEL / QWEN_MODEL / GLM_MODEL）
+    # 4. config.ai.model 默认
+    #
+    # 修复：先不指定 model，让 _resolve_provider 从 model_override / AI_MODEL 推断
+    # 然后用该 provider 的专属 MODEL env 覆盖 model 字段（如 DEEPSEEK_MODEL）
+
     effective_model = model_override or os.environ.get("AI_MODEL", "") or config.ai.model
     provider = _resolve_provider(effective_model)
 
@@ -158,12 +167,24 @@ def load_config(config_path: Path | None = None, model_override: str | None = No
         if provider_cfg.get("api_key"):
             config.ai.api_key = provider_cfg["api_key"]
         if provider_cfg.get("base_url"):
-            config.ai.base_url = provider_cfg["base_url"]
-        config.ai.model = effective_model
+            base_url = provider_cfg["base_url"]
+            # 自动补齐 /v1 后缀（OpenAI Python SDK 要求）
+            if base_url and not base_url.rstrip("/").endswith("/v1"):
+                base_url = base_url.rstrip("/") + "/v1"
+            config.ai.base_url = base_url
+        # 修复：使用 provider 专属 MODEL env 覆盖 model 字段
+        # （之前只设 effective_model，忽略了 DEEPSEEK_MODEL 等）
+        if provider_cfg.get("model"):
+            config.ai.model = provider_cfg["model"]
+        else:
+            config.ai.model = effective_model
         config.ai.provider = provider
     else:
         config.ai.api_key = os.environ.get("AI_API_KEY", config.ai.api_key)
-        config.ai.base_url = os.environ.get("AI_BASE_URL", config.ai.base_url)
+        base_url = os.environ.get("AI_BASE_URL", config.ai.base_url)
+        if base_url and not base_url.rstrip("/").endswith("/v1"):
+            base_url = base_url.rstrip("/") + "/v1"
+        config.ai.base_url = base_url
         config.ai.model = effective_model
 
     return config
