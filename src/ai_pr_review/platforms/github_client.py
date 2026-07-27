@@ -69,7 +69,9 @@ class GitHubClient:
             return response.text
 
         async def _do():
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            # follow_redirects=True：GitHub 对 /pull/N.diff 返回 302 重定向到
+            # patch-diff.githubusercontent.com/raw/.../N.diff（防滥用直接 .diff）
+            async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
                 return await retry_async(lambda: _fetch_once(client), retry_config)
 
         import asyncio
