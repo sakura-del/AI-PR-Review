@@ -119,7 +119,7 @@ def create_app(
 
     app.include_router(auth.router, prefix="/auth", tags=["auth"])
     app.include_router(dashboard.router, tags=["dashboard"])
-    app.include_router(jobs.router, prefix="/api/jobs", tags=["jobs"])
+    app.include_router(jobs.router, tags=["jobs"])  # router 自带 prefix="/api/jobs"
     app.include_router(settings.router, prefix="/settings", tags=["settings"])
 
     # 健康检查（无需认证）
@@ -136,11 +136,6 @@ def create_app(
             "jobs": jobs_info,
             "degradation_level": get_degradation_manager().current_level(),
         }
-
-    # 指标快照（无需认证；生产环境应加访问控制）
-    @app.get("/api/metrics")
-    async def metrics():
-        return get_registry().snapshot()
 
     logger.info(f"Web app created (cors_origins={cors_origins or 'default'})")
     return app

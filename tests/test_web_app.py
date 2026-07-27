@@ -69,10 +69,10 @@ def test_dashboard_root_registered(client):
 
 
 def test_jobs_router_registered(client):
-    """/api/jobs/{job_id} 已挂载"""
+    """/api/jobs/{job_id} 已挂载（无 JobQueue 时返回 503）"""
     resp = client.get("/api/jobs/test-job-id")
-    assert resp.status_code == 200
-    assert resp.json().get("job_id") == "test-job-id"
+    # 503 是因为 JobQueue 未配置（M6 graceful degradation）
+    assert resp.status_code == 503
 
 
 def test_settings_router_registered(client):
