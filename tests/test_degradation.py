@@ -2,14 +2,14 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from ai_pr_review.degradation import (
+from ai_pr_review.core.degradation import (
     DegradationManager,
     get_degradation_manager,
     LEVEL1_THRESHOLD,
     LEVEL2_THRESHOLD,
     LEVEL3_THRESHOLD,
 )
-from ai_pr_review.models import AnalysisResult, AnalysisSummary
+from ai_pr_review.core.models import AnalysisResult, AnalysisSummary
 
 
 @pytest.fixture(autouse=True)
@@ -111,7 +111,7 @@ def test_level1_returns_cached_result():
     assert mgr.current_level() == 1
 
     cached = _make_cached_result()
-    with patch("ai_pr_review.cache.get_cached_result", return_value=cached) as mock_get:
+    with patch("ai_pr_review.data.cache.get_cached_result", return_value=cached) as mock_get:
         result = mgr.get_degraded_result(
             pr_url="https://github.com/o/r/pull/1",
             sha="abc123",
@@ -136,7 +136,7 @@ def test_level1_no_cache_falls_to_level2():
         mgr.record_failure()
     assert mgr.current_level() == 1
 
-    with patch("ai_pr_review.cache.get_cached_result", return_value=None):
+    with patch("ai_pr_review.data.cache.get_cached_result", return_value=None):
         result = mgr.get_degraded_result(
             pr_url="https://github.com/o/r/pull/1",
             sha="abc123",

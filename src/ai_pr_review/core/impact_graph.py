@@ -7,8 +7,8 @@
 """
 import ast
 import logging
-from ai_pr_review.models import ParsedDiff
-from ai_pr_review.call_chain import extract_changed_functions, _get_call_name
+from ai_pr_review.core.models import ParsedDiff
+from ai_pr_review.core.call_chain import extract_changed_functions, _get_call_name
 
 logger = logging.getLogger(__name__)
 

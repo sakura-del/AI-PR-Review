@@ -13,8 +13,8 @@ import json
 import logging
 from typing import Awaitable, Callable
 
-from ai_pr_review.metrics import get_registry
-from ai_pr_review.degradation import get_degradation_manager
+from ai_pr_review.core.metrics import get_registry
+from ai_pr_review.core.degradation import get_degradation_manager
 
 logger = logging.getLogger(__name__)
 

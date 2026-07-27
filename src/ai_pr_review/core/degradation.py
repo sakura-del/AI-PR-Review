@@ -8,7 +8,7 @@
 import logging
 from typing import Optional
 
-from ai_pr_review.models import AnalysisResult, AnalysisSummary
+from ai_pr_review.core.models import AnalysisResult, AnalysisSummary
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ class DegradationManager:
 
         if level == 1:
             # 延迟导入避免循环依赖，且便于在测试中 mock
-            from ai_pr_review.cache import get_cached_result
+            from ai_pr_review.data.cache import get_cached_result
 
             cached = get_cached_result(pr_url, sha, ttl_seconds=_IGNORE_TTL)
             if cached is not None:

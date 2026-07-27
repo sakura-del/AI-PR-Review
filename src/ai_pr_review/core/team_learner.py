@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from openai import AsyncOpenAI
-from ai_pr_review.config import AppConfig
+from ai_pr_review.core.config import AppConfig
 
 logger = logging.getLogger(__name__)
 

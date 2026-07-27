@@ -1,7 +1,7 @@
 import pytest
 import tempfile
 from pathlib import Path
-from ai_pr_review.config import ProjectConfig, load_project_config
+from ai_pr_review.core.config import ProjectConfig, load_project_config
 
 
 class TestProjectConfig:

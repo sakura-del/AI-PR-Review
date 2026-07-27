@@ -2,7 +2,7 @@
 import ast
 import re
 import logging
-from ai_pr_review.models import ParsedDiff, FileDiff, DiffHunk, ChangeType
+from ai_pr_review.core.models import ParsedDiff, FileDiff, DiffHunk, ChangeType
 
 logger = logging.getLogger(__name__)
 

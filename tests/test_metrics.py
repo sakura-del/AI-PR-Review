@@ -11,15 +11,15 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from ai_pr_review.metrics import (
+from ai_pr_review.core.metrics import (
     Counter,
     Histogram,
     Gauge,
     MetricsRegistry,
     get_registry,
 )
-from ai_pr_review.analyzer import AIAnalyzer
-from ai_pr_review.config import AppConfig
+from ai_pr_review.core.analyzer import AIAnalyzer
+from ai_pr_review.core.config import AppConfig
 
 
 @pytest.fixture(autouse=True)
@@ -200,7 +200,7 @@ async def test_analyzer_metrics_integration_success():
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+    with patch("ai_pr_review.core.analyzer.AsyncOpenAI", return_value=mock_client):
         analyzer = AIAnalyzer(config=config)
         result = await analyzer._call_ai([{"role": "user", "content": "hi"}])
 
@@ -233,10 +233,10 @@ async def test_analyzer_metrics_integration_error():
     # 每次调用都抛异常，触发重试到上限
     mock_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("api down"))
 
-    with patch("ai_pr_review.analyzer.AsyncOpenAI", return_value=mock_client):
+    with patch("ai_pr_review.core.analyzer.AsyncOpenAI", return_value=mock_client):
         analyzer = AIAnalyzer(config=config)
         # patch sleep 避免测试等待真实退避时间
-        with patch("ai_pr_review.analyzer.asyncio.sleep", new=AsyncMock()):
+        with patch("ai_pr_review.core.analyzer.asyncio.sleep", new=AsyncMock()):
             result = await analyzer._call_ai([{"role": "user", "content": "hi"}])
 
     assert result == ""

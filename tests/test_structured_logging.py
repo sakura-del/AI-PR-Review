@@ -15,7 +15,7 @@ from datetime import datetime
 
 import pytest
 
-from ai_pr_review.structured_logging import setup_logging
+from ai_pr_review.core.structured_logging import setup_logging
 
 
 @pytest.fixture

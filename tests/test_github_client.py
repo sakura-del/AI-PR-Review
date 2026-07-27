@@ -3,12 +3,41 @@
 所有 GitHub API 调用均通过 mock 隔离，避免真实网络请求。
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from github import GithubException
 
-from ai_pr_review.github_client import GitHubClient, parse_pr_url
-from ai_pr_review.models import PRMetadata
+from ai_pr_review.platforms.github_client import GitHubClient, parse_pr_url
+from ai_pr_review.core.models import PRMetadata
+
+
+def _patch_async_http_client():
+    """返回一个 context manager，patch httpx.AsyncClient 为 mock"""
+    return patch("ai_pr_review.platforms.github_client.httpx.AsyncClient")
+
+
+def _setup_async_http_mock(mock_client_cls, status=200, text="", json_data=None):
+    """配置 AsyncClient mock 返回指定响应
+
+    用法：
+        with _patch_async_http_client() as mock_client_cls:
+            mock_http = _setup_async_http_mock(mock_client_cls, text="diff content")
+            result = client._fetch_diff_via_api(...)
+    """
+    mock_http = MagicMock()
+    mock_response = MagicMock()
+    mock_response.status_code = status
+    mock_response.text = text
+    mock_response.headers = MagicMock()
+    mock_response.headers.get = MagicMock(return_value="")
+    if json_data is not None:
+        mock_response.json = MagicMock(return_value=json_data)
+    mock_response.raise_for_status = MagicMock()
+    mock_http.get = AsyncMock(return_value=mock_response)
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=None)
+    mock_client_cls.return_value = mock_http
+    return mock_http
 
 
 # 统一的测试用 PR URL
@@ -18,7 +47,7 @@ PR_URL = "https://github.com/octocat/Hello-World/pull/42"
 @pytest.fixture
 def mock_github():
     """mock github.Github 构造函数，返回 mock 客户端实例。"""
-    with patch("ai_pr_review.github_client.Github") as mock_github_class:
+    with patch("ai_pr_review.platforms.github_client.Github") as mock_github_class:
         mock_client = MagicMock()
         mock_github_class.return_value = mock_client
         yield mock_client
@@ -133,14 +162,8 @@ class TestGetPrDiffContent:
 class TestFetchDiffViaApi:
     def test_builds_url_and_headers_with_token(self, client):
         # 带 token 时请求头应包含 Authorization，URL 应指向 .diff 端点
-        with patch("ai_pr_review.github_client.httpx.Client") as mock_client_cls:
-            mock_http = MagicMock()
-            mock_response = MagicMock()
-            mock_response.status_code = 200
-            mock_response.text = "diff content"
-            mock_response.raise_for_status = MagicMock()
-            mock_http.get.return_value = mock_response
-            mock_client_cls.return_value.__enter__.return_value = mock_http
+        with _patch_async_http_client() as mock_client_cls:
+            mock_http = _setup_async_http_mock(mock_client_cls, text="diff content")
 
             result = client._fetch_diff_via_api("octocat", "Hello-World", 42)
 
@@ -157,14 +180,8 @@ class TestFetchDiffViaApi:
     def test_omits_authorization_without_token(self, mock_github):
         # 无 token 时请求头不应包含 Authorization
         tokenless_client = GitHubClient()
-        with patch("ai_pr_review.github_client.httpx.Client") as mock_client_cls:
-            mock_http = MagicMock()
-            mock_response = MagicMock()
-            mock_response.status_code = 200
-            mock_response.text = "diff"
-            mock_response.raise_for_status = MagicMock()
-            mock_http.get.return_value = mock_response
-            mock_client_cls.return_value.__enter__.return_value = mock_http
+        with _patch_async_http_client() as mock_client_cls:
+            mock_http = _setup_async_http_mock(mock_client_cls, text="diff")
 
             result = tokenless_client._fetch_diff_via_api("a", "b", 1)
 
@@ -305,19 +322,17 @@ class TestGetPrHeadSha:
 class TestGetCommitDiff:
     def test_calls_compare_api_and_assembles_diff(self, client):
         # get_commit_diff 应通过 compare API 拉取并组装 patch 为 diff 文本
-        with patch("ai_pr_review.github_client.httpx.Client") as mock_client_cls:
-            mock_http = MagicMock()
-            mock_response = MagicMock()
-            mock_response.raise_for_status = MagicMock()
-            mock_response.json.return_value = {
-                "files": [
-                    {"filename": "a.py", "patch": "@@ -1 +1 @@"},
-                    {"filename": "b.py", "patch": "@@ -2 +2 @@"},
-                    {"filename": "c.py"},  # 无 patch 应被跳过
-                ]
-            }
-            mock_http.get.return_value = mock_response
-            mock_client_cls.return_value.__enter__.return_value = mock_http
+        with _patch_async_http_client() as mock_client_cls:
+            mock_http = _setup_async_http_mock(
+                mock_client_cls,
+                json_data={
+                    "files": [
+                        {"filename": "a.py", "patch": "@@ -1 +1 @@"},
+                        {"filename": "b.py", "patch": "@@ -2 +2 @@"},
+                        {"filename": "c.py"},  # 无 patch 应被跳过
+                    ]
+                },
+            )
 
             result = client.get_commit_diff(PR_URL, "base123", "head456")
 

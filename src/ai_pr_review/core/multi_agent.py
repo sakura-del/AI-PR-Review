@@ -8,12 +8,13 @@
 """
 import asyncio
 import logging
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     ParsedDiff, PRMetadata, AnalysisResult, AnalysisSummary,
     Finding, Suggestion, Severity,
 )
-from ai_pr_review.expert_knowledge import ExpertProfile
-from ai_pr_review.prompt_templates import build_analysis_prompt
+from ai_pr_review.core.expert_knowledge import ExpertProfile
+from ai_pr_review.core.analysis_context import AnalysisContext
+from ai_pr_review.core.prompt_templates import build_analysis_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -32,19 +33,20 @@ def _build_single_expert_messages(
 
     与默认 build_analysis_prompt 区别：experts 参数只传当前 Agent，
     使 AI 聚焦于单一领域的审查标准，提升深度。
+
+    v0.9 改为构造 AnalysisContext 后调用 build_analysis_prompt(ctx)
     """
-    return build_analysis_prompt(
+    ctx = AnalysisContext(
         pr_context=pr_context,
         diff_context=diff_context,
         file_context=file_context,
         experts=[expert],
-        custom_rules=None,
-        team_rules=None,
         cross_file_context=context_extras.get("cross_file_context", ""),
         call_chain_context=context_extras.get("call_chain_context", ""),
         impact_graph_context=context_extras.get("impact_graph_context", ""),
         similar_reviews_context=context_extras.get("similar_reviews_context", ""),
     )
+    return build_analysis_prompt(ctx)
 
 
 async def run_agent(

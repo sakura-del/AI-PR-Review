@@ -1,7 +1,7 @@
 """跨文件依赖上下文构建器"""
 import re
 import logging
-from ai_pr_review.models import ParsedDiff
+from ai_pr_review.core.models import ParsedDiff
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 import tiktoken
-from ai_pr_review.models import ParsedDiff, FileDiff, PRMetadata
-from ai_pr_review.config import AppConfig
-from ai_pr_review.file_priority import sort_files_by_priority
+from ai_pr_review.core.models import ParsedDiff, FileDiff, PRMetadata
+from ai_pr_review.core.config import AppConfig
+from ai_pr_review.core.file_priority import sort_files_by_priority
 
 
 def _count_tokens(text: str, model: str = "gpt-4") -> int:
@@ -47,7 +47,7 @@ class ContextBuilder:
 
         # 构建跨文件依赖上下文
         if remaining_budget > 500 and self._get_file_content:
-            from ai_pr_review.dependency_extractor import build_cross_file_context
+            from ai_pr_review.core.dependency_extractor import build_cross_file_context
             cross_file = build_cross_file_context(
                 parsed_diff, self._get_file_content, "", "",
                 max_files=3, max_content_length=2000
@@ -59,7 +59,7 @@ class ContextBuilder:
 
         # 构建函数调用链上下文
         if remaining_budget > 1000 and self._get_file_content:
-            from ai_pr_review.call_chain import build_call_chain_context
+            from ai_pr_review.core.call_chain import build_call_chain_context
             call_chain = build_call_chain_context(
                 parsed_diff, self._get_file_content, "", ""
             )
@@ -70,7 +70,7 @@ class ContextBuilder:
 
         # 构建增量影响图上下文（受变更函数影响的闭包子图）
         if remaining_budget > 800 and self._get_file_content:
-            from ai_pr_review.impact_graph import build_impact_graph_context
+            from ai_pr_review.core.impact_graph import build_impact_graph_context
             impact_graph = build_impact_graph_context(
                 parsed_diff, self._get_file_content, "", ""
             )
@@ -82,7 +82,7 @@ class ContextBuilder:
 
         # 构建相似 PR 经验检索上下文（基于历史审查记录的轻量 RAG）
         if remaining_budget > 800:
-            from ai_pr_review.knowledge_base import build_similar_reviews_context
+            from ai_pr_review.core.knowledge_base import build_similar_reviews_context
             similar_ctx = build_similar_reviews_context(pr_metadata, parsed_diff)
             if similar_ctx:
                 similar_tokens = _estimate_tokens(similar_ctx)

@@ -1,14 +1,14 @@
 """multi_agent 模块测试 — 覆盖单 Agent 运行、并行调度、异常容错"""
 import asyncio
 import pytest
-from ai_pr_review.multi_agent import (
+from ai_pr_review.core.multi_agent import (
     _build_single_expert_messages,
     run_agent,
     run_multi_agent_review,
     MULTI_AGENT_CONCURRENCY,
 )
-from ai_pr_review.expert_knowledge import ExpertProfile, EXPERT_SKILLS
-from ai_pr_review.models import AnalysisResult, AnalysisSummary, Finding, Suggestion, Severity
+from ai_pr_review.core.expert_knowledge import ExpertProfile, EXPERT_SKILLS
+from ai_pr_review.core.models import AnalysisResult, AnalysisSummary, Finding, Suggestion, Severity
 
 
 def _make_expert(name: str = "security") -> ExpertProfile:

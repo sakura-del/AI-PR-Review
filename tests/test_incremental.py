@@ -1,10 +1,15 @@
 import pytest
 from unittest.mock import MagicMock
-from ai_pr_review.history import AnalysisRecord, find_last_record
-from ai_pr_review.incremental import IncrementalAnalyzer
-from ai_pr_review.models import ParsedDiff, FileDiff, DiffHunk, ChangeType
-from ai_pr_review.prompt_templates import build_analysis_prompt, INCREMENTAL_SYSTEM_PROMPT, SYSTEM_PROMPT
-from ai_pr_review.expert_knowledge import EXPERT_SKILLS
+from ai_pr_review.data.history import AnalysisRecord, find_last_record
+from ai_pr_review.core.incremental import IncrementalAnalyzer
+from ai_pr_review.core.models import ParsedDiff, FileDiff, DiffHunk, ChangeType
+from ai_pr_review.core.prompt_templates import (
+    build_analysis_prompt,
+    build_analysis_prompt_legacy,
+    INCREMENTAL_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
+)
+from ai_pr_review.core.expert_knowledge import EXPERT_SKILLS
 
 
 class TestAnalysisRecordShaFields:
@@ -29,8 +34,8 @@ class TestAnalysisRecordShaFields:
 
 class TestFindLastRecord:
     def test_find_last_record_found(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("ai_pr_review.history.HISTORY_DIR", tmp_path)
-        from ai_pr_review.history import save_record
+        monkeypatch.setattr("ai_pr_review.data.history.HISTORY_DIR", tmp_path)
+        from ai_pr_review.data.history import save_record
         record = AnalysisRecord(
             pr_url="https://github.com/o/r/pull/1",
             pr_title="Test",
@@ -42,13 +47,13 @@ class TestFindLastRecord:
         assert result.head_sha == "abc123"
 
     def test_find_last_record_not_found(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("ai_pr_review.history.HISTORY_DIR", tmp_path)
+        monkeypatch.setattr("ai_pr_review.data.history.HISTORY_DIR", tmp_path)
         result = find_last_record("https://github.com/o/r/pull/999")
         assert result is None
 
     def test_find_last_record_no_sha(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("ai_pr_review.history.HISTORY_DIR", tmp_path)
-        from ai_pr_review.history import save_record
+        monkeypatch.setattr("ai_pr_review.data.history.HISTORY_DIR", tmp_path)
+        from ai_pr_review.data.history import save_record
         record = AnalysisRecord(
             pr_url="https://github.com/o/r/pull/1",
             pr_title="Test",
@@ -133,7 +138,7 @@ class TestIncrementalPrompt:
             "last_timestamp": "2026-01-01T00:00:00",
             "is_incremental": True,
         }
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test PR",
             diff_context="diff content",
             file_context="",
@@ -154,7 +159,7 @@ class TestIncrementalPrompt:
             "last_timestamp": "2026-01-01",
             "is_incremental": True,
         }
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test",
             diff_context="diff",
             file_context="",
@@ -165,7 +170,7 @@ class TestIncrementalPrompt:
 
     def test_full_analysis_no_incremental_context(self):
         experts = [EXPERT_SKILLS["security"]]
-        messages = build_analysis_prompt(
+        messages = build_analysis_prompt_legacy(
             pr_context="Test",
             diff_context="diff",
             file_context="",

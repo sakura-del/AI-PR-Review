@@ -1,11 +1,11 @@
 """call_chain 模块测试"""
-from ai_pr_review.call_chain import (
+from ai_pr_review.core.call_chain import (
     extract_changed_functions,
     extract_called_functions,
     analyze_call_chain,
     build_call_chain_context,
 )
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     ParsedDiff,
     FileDiff,
     DiffHunk,

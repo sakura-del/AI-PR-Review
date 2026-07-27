@@ -9,7 +9,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from ai_pr_review.config_error import ConfigError, InvalidValueError, MissingRequiredError
+from ai_pr_review.core.config_error import ConfigError, InvalidValueError, MissingRequiredError
 
 
 MODEL_PRESETS: dict[str, dict[str, str]] = {
@@ -182,7 +182,7 @@ def validate_config(config: AppConfig) -> None:
     聚合所有错误一次性抛出：单个错误抛出具体子类，多个错误用 ConfigError 汇总。
     """
     # 延迟导入避免与 expert_knowledge 产生循环依赖
-    from ai_pr_review.expert_knowledge import EXPERT_SKILLS
+    from ai_pr_review.core.expert_knowledge import EXPERT_SKILLS
 
     errors: list[ConfigError] = []
 

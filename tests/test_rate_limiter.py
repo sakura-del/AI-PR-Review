@@ -14,8 +14,8 @@ import asyncio
 
 import pytest
 
-from ai_pr_review.rate_limiter import RateLimiter, get_rate_limiter
-import ai_pr_review.rate_limiter as rl_module
+from ai_pr_review.core.rate_limiter import RateLimiter, get_rate_limiter
+import ai_pr_review.core.rate_limiter as rl_module
 
 
 # ---------- 辅助函数 ----------

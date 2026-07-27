@@ -1,5 +1,5 @@
 import re
-from ai_pr_review.models import DiffHunk, FileDiff, ParsedDiff, ChangeType
+from ai_pr_review.core.models import DiffHunk, FileDiff, ParsedDiff, ChangeType
 
 GENERATED_PATTERNS = re.compile(
     r"(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|\.generated\.|go\.sum|poetry\.lock|Gemfile\.lock|cargo\.lock)",

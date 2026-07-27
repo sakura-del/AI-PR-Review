@@ -10,7 +10,7 @@ import asyncio
 import json
 import re
 import logging
-from ai_pr_review.models import AnalysisResult, Finding, Severity
+from ai_pr_review.core.models import AnalysisResult, Finding, Severity
 
 logger = logging.getLogger(__name__)
 

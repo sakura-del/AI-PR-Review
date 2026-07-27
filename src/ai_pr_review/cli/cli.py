@@ -10,23 +10,23 @@ from rich.panel import Panel
 from rich.table import Table
 import typer
 
-from ai_pr_review.config import (
+from ai_pr_review.core.config import (
     load_config,
     load_config_strict,
     validate_config,
     DEFAULT_CONFIG_PATH,
     MODEL_PRESETS,
 )
-from ai_pr_review.config_error import ConfigError
-from ai_pr_review.github_client import GitHubClient
-from ai_pr_review.diff_parser import parse_diff
-from ai_pr_review.analyzer import AIAnalyzer, SHARD_FILE_THRESHOLD, SHARD_LINE_THRESHOLD
-from ai_pr_review.formatter import format_terminal
-from ai_pr_review.commenter import Commenter
-from ai_pr_review.history import save_record, load_records, format_history_table, AnalysisRecord
-from ai_pr_review.incremental import IncrementalAnalyzer
-from ai_pr_review.team_learner import TeamLearner
-from ai_pr_review.team_rules import save_team_pattern, load_team_pattern
+from ai_pr_review.core.config_error import ConfigError
+from ai_pr_review.platforms.github_client import GitHubClient
+from ai_pr_review.core.diff_parser import parse_diff
+from ai_pr_review.core.analyzer import AIAnalyzer, SHARD_FILE_THRESHOLD, SHARD_LINE_THRESHOLD
+from ai_pr_review.core.formatter import format_terminal
+from ai_pr_review.server.commenter import Commenter
+from ai_pr_review.data.history import save_record, load_records, format_history_table, AnalysisRecord
+from ai_pr_review.core.incremental import IncrementalAnalyzer
+from ai_pr_review.core.team_learner import TeamLearner
+from ai_pr_review.data.team_rules import save_team_pattern, load_team_pattern
 
 async def _run_stream(stream_gen):
     result = None
@@ -225,7 +225,7 @@ def review(
 ):
     # 初始化结构化日志（structured_logging 模块可能尚未创建，用 try/except 兜底）
     try:
-        from ai_pr_review.structured_logging import setup_logging
+        from ai_pr_review.core.structured_logging import setup_logging
         setup_logging(format=log_format, level="INFO")
     except ImportError:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -247,7 +247,7 @@ def review(
     # 限流配置：写入环境变量供 rate_limiter 读取，rate > 0 时初始化单例
     os.environ["RATE_LIMIT"] = str(rate_limit)
     if rate_limit > 0:
-        from ai_pr_review.rate_limiter import get_rate_limiter
+        from ai_pr_review.core.rate_limiter import get_rate_limiter
         get_rate_limiter(rate=rate_limit)
 
     console.print(Panel(f"🔍 AI PR Review", subtitle=f"{pr_url} | model: {config.ai.model}"))
@@ -301,7 +301,7 @@ def review(
     # 检查结果缓存（仅非增量、非流式、非多 Agent 时）
     cache_hit = False
     if not no_cache and not incremental and not stream and not multi_agent:
-        from ai_pr_review.cache import get_cached_result
+        from ai_pr_review.data.cache import get_cached_result
         try:
             current_sha = gh_client.get_pr_head_sha(pr_url)
         except Exception:
@@ -434,7 +434,7 @@ def review(
 
     # 保存分析结果到缓存（跳过缓存命中、增量分析、多 Agent 的情况）
     if not no_cache and current_sha and not cache_hit and not is_incremental_analysis and not multi_agent:
-        from ai_pr_review.cache import save_cached_result
+        from ai_pr_review.data.cache import save_cached_result
         save_cached_result(pr_url, current_sha, result)
 
     record = AnalysisRecord(
@@ -519,13 +519,13 @@ def serve(
     """启动 REST API 服务（含 webhook 端点）"""
     # 初始化结构化日志
     try:
-        from ai_pr_review.structured_logging import setup_logging
+        from ai_pr_review.core.structured_logging import setup_logging
         setup_logging(format=log_format, level="INFO")
     except ImportError:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     import asyncio as _asyncio
-    from ai_pr_review.api_server import build_router, serve as _serve
+    from ai_pr_review.server.api_server import build_router, serve as _serve
 
     config = load_config()
 
@@ -557,7 +557,7 @@ def serve(
             console.print("✅ Review posted to GitHub!")
 
     def history_callback() -> list:
-        from ai_pr_review.history import load_records
+        from ai_pr_review.data.history import load_records
         from dataclasses import asdict
         return [asdict(r) for r in load_records()]
 
@@ -584,7 +584,7 @@ def dashboard(
     port: int = typer.Option(8001, "--port", "-p", help="Port to serve on (0 = no server, just write file)"),
 ):
     """生成审查历史 Dashboard HTML 页面"""
-    from ai_pr_review.dashboard import render_dashboard
+    from ai_pr_review.server.dashboard import render_dashboard
     import webbrowser
     from pathlib import Path as _Path
 

@@ -1,6 +1,6 @@
 """aggregator 模块测试 — 覆盖去重、共识加权、排序、suggestion 合并"""
 import pytest
-from ai_pr_review.aggregator import (
+from ai_pr_review.core.aggregator import (
     _finding_key,
     _merge_findings,
     aggregate_findings,
@@ -8,7 +8,7 @@ from ai_pr_review.aggregator import (
     aggregate_results,
     CONSENSUS_BOOST_THRESHOLD,
 )
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     AnalysisResult, AnalysisSummary, Finding, Suggestion, Severity,
 )
 

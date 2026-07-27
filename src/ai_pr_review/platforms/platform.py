@@ -5,7 +5,9 @@
 - 复用现有 GitHubClient 实现，不破坏既有代码
 - GitLab 客户端基于 httpx，零额外依赖（httpx 已在依赖中）
 - URL 解析作为协议无关的入口，自动识别平台
+- v0.9：429/5xx 退避重试（GitLab 也返回 Retry-After）
 """
+import asyncio
 import re
 import logging
 from abc import ABC, abstractmethod
@@ -13,10 +15,23 @@ from typing import Optional
 
 import httpx
 
-from ai_pr_review.models import PRMetadata
-from ai_pr_review.github_client import GitHubClient, parse_pr_url as parse_github_url
+from ai_pr_review.core.models import PRMetadata
+from ai_pr_review.platforms.github_client import GitHubClient, parse_pr_url as parse_github_url
+from ai_pr_review.core.retry import RetryConfig, retry_async
 
 logger = logging.getLogger(__name__)
+
+
+def _run_async(coro):
+    """在独立 event loop 中运行协程（避开 pytest-asyncio 等已有 loop 的场景）
+
+    asyncio.run() 在已有 loop 内会抛 RuntimeError；本方法用 new_event_loop 隔离。
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 class GitPlatform(ABC):
@@ -98,7 +113,12 @@ class GitLabPlatform(GitPlatform):
     """GitLab 平台适配器 — 基于 httpx 调用 GitLab REST API
 
     API 文档：https://docs.gitlab.com/ee/api/merge_requests.html
+
+    重试策略：v0.9 起 429/5xx 走指数退避 + Retry-After（与 GitHub 一致）。
     """
+
+    # 重试配置：3 次重试，base 1s，max 30s
+    _RETRY_CONFIG = RetryConfig(max_retries=3, base_delay=1.0, max_delay=30.0)
 
     def __init__(self, token: str = "", host: str = ""):
         self._token = token
@@ -121,15 +141,49 @@ class GitLabPlatform(GitPlatform):
         """构造完整 API URL"""
         return f"https://{host}/api/v4{path}"
 
+    async def _request_json(self, url: str, timeout: float = 60.0) -> dict:
+        """异步 GET 请求，自动应用重试"""
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async def _do():
+                resp = await client.get(url, headers=self._headers())
+                resp.raise_for_status()
+                return resp.json()
+            return await retry_async(_do, self._RETRY_CONFIG)
+
+    async def _request_text(self, url: str, timeout: float = 120.0) -> tuple[str, str]:
+        """异步 GET 请求，返回 (text, content_type)；自动应用重试"""
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async def _do():
+                resp = await client.get(url, headers=self._headers())
+                resp.raise_for_status()
+                return resp.text, resp.headers.get("content-type", "")
+            return await retry_async(_do, self._RETRY_CONFIG)
+
+    async def _request_file_content(self, url: str, ref: str, timeout: float = 60.0) -> str:
+        """异步拉取原始文件内容；404 返回空串（业务约定的"文件不存在"语义）
+
+        与 _request_text 区别：
+        - 404 不抛异常（GitLab 风格的业务语义）
+        - 携带 params={"ref": ref}
+        """
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async def _fetch():
+                resp = await client.get(url, headers=self._headers(), params={"ref": ref})
+                if resp.status_code == 404:
+                    return ""
+                resp.raise_for_status()
+                return resp.text
+            try:
+                return await retry_async(_fetch, self._RETRY_CONFIG)
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    return ""
+                raise
+
     def get_pr_metadata(self, url: str) -> PRMetadata:
         host, project, mr_iid = self._api_base(url)
         api_url = self._api_url(host, f"/projects/{project}/merge_requests/{mr_iid}")
-
-        transport = httpx.HTTPTransport(retries=3)
-        with httpx.Client(transport=transport, timeout=60.0) as client:
-            resp = client.get(api_url, headers=self._headers())
-            resp.raise_for_status()
-            data = resp.json()
+        data = _run_async(self._request_json(api_url, timeout=60.0))
 
         return PRMetadata(
             title=data.get("title", ""),
@@ -146,19 +200,11 @@ class GitLabPlatform(GitPlatform):
 
     def get_pr_diff_content(self, url: str) -> str:
         host, project, mr_iid = self._api_base(url)
-        # GitLab 提供 .diff 扩展直接获取 diff 文本
         api_url = self._api_url(host, f"/projects/{project}/merge_requests/{mr_iid}/diffs")
-
-        transport = httpx.HTTPTransport(retries=3)
-        headers = self._headers()
-        headers["Accept"] = "text/plain"
-        with httpx.Client(transport=transport, timeout=120.0) as client:
-            resp = client.get(api_url, headers=headers)
-            # 退化策略：若返回 JSON 数组，拼接为 diff 文本
-            if resp.headers.get("content-type", "").startswith("application/json"):
-                return self._diffs_to_text(resp.json())
-            resp.raise_for_status()
-            return resp.text
+        text, content_type = _run_async(self._request_text(api_url, timeout=120.0))
+        if content_type.startswith("application/json"):
+            return self._diffs_to_text(_safe_parse_json(text))
+        return text
 
     def _diffs_to_text(self, diffs: list[dict]) -> str:
         """将 GitLab diffs JSON 数组转为标准 unified diff 文本"""
@@ -168,9 +214,9 @@ class GitLabPlatform(GitPlatform):
             new_path = d.get("new_path", "")
             parts.append(f"diff --git a/{old_path} b/{new_path}")
             if d.get("new_file"):
-                parts.append(f"new file mode 100644")
+                parts.append("new file mode 100644")
             elif d.get("deleted_file"):
-                parts.append(f"deleted file mode 100644")
+                parts.append("deleted file mode 100644")
             parts.append(f"--- a/{old_path}")
             parts.append(f"+++ b/{new_path}")
             parts.append(d.get("diff", ""))
@@ -182,23 +228,22 @@ class GitLabPlatform(GitPlatform):
         api_url = self._api_url(
             host, f"/projects/{project}/repository/files/{encoded_path}/raw"
         )
-        transport = httpx.HTTPTransport(retries=3)
-        with httpx.Client(transport=transport, timeout=60.0) as client:
-            resp = client.get(api_url, headers=self._headers(), params={"ref": ref})
-            if resp.status_code == 404:
-                return ""
-            resp.raise_for_status()
-            return resp.text
+        return _run_async(self._request_file_content(api_url, ref, timeout=60.0))
 
     def get_pr_head_sha(self, url: str) -> str:
         host, project, mr_iid = self._api_base(url)
         api_url = self._api_url(host, f"/projects/{project}/merge_requests/{mr_iid}/versions")
-        transport = httpx.HTTPTransport(retries=3)
-        with httpx.Client(transport=transport, timeout=60.0) as client:
-            resp = client.get(api_url, headers=self._headers())
-            resp.raise_for_status()
-            versions = resp.json()
+        versions = _run_async(self._request_json(api_url, timeout=60.0))
         if not versions:
             return ""
-        # 取最新版本的 head_commit_sha
         return versions[0].get("head_commit_sha", "")
+
+
+def _safe_parse_json(text: str) -> list:
+    """容错解析 JSON 数组（GitLab diff 退化场景）"""
+    import json
+    try:
+        result = json.loads(text)
+        return result if isinstance(result, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []

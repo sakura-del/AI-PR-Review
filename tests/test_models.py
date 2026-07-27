@@ -1,4 +1,4 @@
-from ai_pr_review.models import DiffHunk, FileDiff, ParsedDiff, PRMetadata, Finding, AnalysisResult, Severity, ChangeType, AnalysisSummary, Suggestion
+from ai_pr_review.core.models import DiffHunk, FileDiff, ParsedDiff, PRMetadata, Finding, AnalysisResult, Severity, ChangeType, AnalysisSummary, Suggestion
 
 
 def test_diff_hunk_creation():

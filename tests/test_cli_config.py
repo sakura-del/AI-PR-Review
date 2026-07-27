@@ -9,7 +9,7 @@ import pytest
 from pathlib import Path
 from typer.testing import CliRunner
 
-from ai_pr_review.cli import app
+from ai_pr_review.cli.cli import app
 
 runner = CliRunner()
 
@@ -30,7 +30,7 @@ def _isolate_env(monkeypatch):
     for var in _ENV_VARS_TO_CLEAR:
         monkeypatch.delenv(var, raising=False)
     # 禁止 load_config 加载 .env 文件
-    monkeypatch.setattr("ai_pr_review.config._load_env_file", lambda: None)
+    monkeypatch.setattr("ai_pr_review.core.config._load_env_file", lambda: None)
 
 
 # ---------- 辅助函数 ----------

@@ -2,7 +2,7 @@
 import asyncio
 import json
 import pytest
-from ai_pr_review.api_server import (
+from ai_pr_review.server.api_server import (
     APIRouter,
     build_router,
     _build_response,
@@ -32,15 +32,18 @@ def _make_request(method: str, path: str, body: bytes = b"", headers: dict = Non
 def test_router_add_and_match():
     router = APIRouter()
     router.add_route("GET", "/test", lambda h, b: None)
-    assert router.match("GET", "/test") is not None
-    assert router.match("POST", "/test") is None
-    assert router.match("GET", "/other") is None
+    handler, params = router.match("GET", "/test")
+    assert handler is not None
+    assert params == {}
+    assert router.match("POST", "/test")[0] is None
+    assert router.match("GET", "/other")[0] is None
 
 
 def test_router_case_insensitive_method():
     router = APIRouter()
     router.add_route("post", "/x", lambda h, b: None)
-    assert router.match("POST", "/x") is not None
+    handler, _ = router.match("POST", "/x")
+    assert handler is not None
 
 
 def test_router_strips_query_string_by_parse():
@@ -144,7 +147,7 @@ async def test_health_endpoint():
         triggered.append(url)
 
     router = build_router(review_fn)
-    handler = router.match("GET", "/api/health")
+    handler, _ = router.match("GET", "/api/health")
     assert handler is not None
 
     status, body = await handler({}, b"")
@@ -160,12 +163,13 @@ async def test_review_endpoint_accepts_pr_url():
         triggered.append(url)
 
     router = build_router(review_fn)
-    handler = router.match("POST", "/api/review")
+    handler, _ = router.match("POST", "/api/review")
 
     body = json.dumps({"pr_url": "https://github.com/o/r/pull/2"}).encode()
     status, resp = await handler({}, body)
     assert status == 202
-    assert resp["status"] == "accepted"
+    assert "job_id" in resp
+    assert resp["status"] == "pending"
     # 等待异步任务
     await asyncio.sleep(0.05)
     assert triggered == ["https://github.com/o/r/pull/2"]
@@ -177,7 +181,7 @@ async def test_review_endpoint_rejects_missing_pr_url():
         pass
 
     router = build_router(review_fn)
-    handler = router.match("POST", "/api/review")
+    handler, _ = router.match("POST", "/api/review")
 
     status, resp = await handler({}, b'{}')
     assert status == 400
@@ -190,7 +194,7 @@ async def test_review_endpoint_rejects_invalid_json():
         pass
 
     router = build_router(review_fn)
-    handler = router.match("POST", "/api/review")
+    handler, _ = router.match("POST", "/api/review")
 
     status, resp = await handler({}, b"not json")
     assert status == 400
@@ -205,7 +209,7 @@ async def test_history_endpoint_with_fn():
         return [{"pr": "a", "findings": 3}, {"pr": "b", "findings": 1}]
 
     router = build_router(review_fn, history_fn=history_fn)
-    handler = router.match("GET", "/api/history")
+    handler, _ = router.match("GET", "/api/history")
 
     status, body = await handler({}, b"")
     assert status == 200
@@ -218,7 +222,7 @@ async def test_history_endpoint_without_fn():
         pass
 
     router = build_router(review_fn, history_fn=None)
-    handler = router.match("GET", "/api/history")
+    handler, _ = router.match("GET", "/api/history")
 
     status, body = await handler({}, b"")
     assert status == 200
@@ -234,7 +238,7 @@ async def test_history_endpoint_handles_fn_exception():
         raise RuntimeError("db down")
 
     router = build_router(review_fn, history_fn=history_fn)
-    handler = router.match("GET", "/api/history")
+    handler, _ = router.match("GET", "/api/history")
 
     status, body = await handler({}, b"")
     assert status == 500
@@ -247,7 +251,7 @@ async def test_review_exception_does_not_crash_handler():
         raise RuntimeError("review failed")
 
     router = build_router(review_fn)
-    handler = router.match("POST", "/api/review")
+    handler, _ = router.match("POST", "/api/review")
 
     body = json.dumps({"pr_url": "https://github.com/o/r/pull/1"}).encode()
     status, _ = await handler({}, body)
@@ -343,7 +347,7 @@ async def test_end_to_end_post_review():
         resp = await asyncio.wait_for(client(), timeout=2.0)
         text = resp.decode("utf-8")
         assert "202" in text
-        assert "accepted" in text
+        assert "job_id" in text
         await asyncio.sleep(0.05)
         assert triggered == ["https://github.com/o/r/pull/5"]
     finally:

@@ -10,7 +10,7 @@ import html
 import logging
 from typing import Optional
 
-from ai_pr_review.history import AnalysisRecord, load_records
+from ai_pr_review.data.history import AnalysisRecord, load_records
 
 logger = logging.getLogger(__name__)
 

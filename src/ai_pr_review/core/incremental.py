@@ -1,6 +1,6 @@
-from ai_pr_review.models import ParsedDiff
-from ai_pr_review.history import find_last_record, AnalysisRecord
-from ai_pr_review.github_client import GitHubClient
+from ai_pr_review.core.models import ParsedDiff
+from ai_pr_review.data.history import find_last_record, AnalysisRecord
+from ai_pr_review.platforms.github_client import GitHubClient
 
 
 class IncrementalAnalyzer:

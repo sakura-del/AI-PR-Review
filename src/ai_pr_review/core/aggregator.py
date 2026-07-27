@@ -7,7 +7,7 @@
 - 排序：severity 降序 → confidence 降序 → 共识数降序
 """
 import logging
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     AnalysisResult, AnalysisSummary, Finding, Suggestion, Severity,
 )
 

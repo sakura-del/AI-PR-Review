@@ -10,7 +10,7 @@ import math
 import re
 import logging
 from pathlib import Path
-from ai_pr_review.models import ParsedDiff, PRMetadata
+from ai_pr_review.core.models import ParsedDiff, PRMetadata
 
 logger = logging.getLogger(__name__)
 

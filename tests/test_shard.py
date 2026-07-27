@@ -1,11 +1,11 @@
 import pytest
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     ParsedDiff,
     FileDiff,
     DiffHunk,
     ChangeType,
 )
-from ai_pr_review.analyzer import AIAnalyzer, SHARD_FILE_THRESHOLD, SHARD_LINE_THRESHOLD
+from ai_pr_review.core.analyzer import AIAnalyzer, SHARD_FILE_THRESHOLD, SHARD_LINE_THRESHOLD
 
 
 def _make_file_diff(path: str, additions: int = 100, deletions: int = 50) -> FileDiff:
@@ -89,7 +89,7 @@ class TestMergeResults:
         assert len(merged.suggestions) == 0
 
     def test_merge_combines_findings(self):
-        from ai_pr_review.models import AnalysisResult, AnalysisSummary, Finding, Severity
+        from ai_pr_review.core.models import AnalysisResult, AnalysisSummary, Finding, Severity
 
         result1 = AnalysisResult(
             summary=AnalysisSummary(intent="test", scope="a", key_changes=["change1"]),
@@ -113,7 +113,7 @@ class TestMergeResults:
         assert len(merged.findings) == 2
 
     def test_merge_deduplicates(self):
-        from ai_pr_review.models import AnalysisResult, AnalysisSummary, Finding, Severity
+        from ai_pr_review.core.models import AnalysisResult, AnalysisSummary, Finding, Severity
 
         finding = Finding(
             type="bug", severity=Severity.HIGH, confidence=4,
@@ -134,7 +134,7 @@ class TestMergeResults:
         assert len(merged.findings) == 1
 
     def test_merge_sorts_by_location(self):
-        from ai_pr_review.models import AnalysisResult, AnalysisSummary, Finding, Severity
+        from ai_pr_review.core.models import AnalysisResult, AnalysisSummary, Finding, Severity
 
         result1 = AnalysisResult(
             summary=AnalysisSummary(intent="", scope="", key_changes=[]),
@@ -159,7 +159,7 @@ class TestMergeResults:
         assert merged.findings[1].file == "z.py"
 
     def test_merge_key_changes_capped(self):
-        from ai_pr_review.models import AnalysisResult, AnalysisSummary, Suggestion
+        from ai_pr_review.core.models import AnalysisResult, AnalysisSummary, Suggestion
 
         results = []
         for i in range(5):

@@ -5,7 +5,7 @@
 
 import pytest
 
-from ai_pr_review.config import (
+from ai_pr_review.core.config import (
     AIConfig,
     AnalysisConfig,
     AppConfig,
@@ -14,7 +14,7 @@ from ai_pr_review.config import (
     load_config_strict,
     validate_config,
 )
-from ai_pr_review.config_error import (
+from ai_pr_review.core.config_error import (
     ConfigError,
     InvalidValueError,
     MissingRequiredError,
@@ -134,14 +134,14 @@ class TestLoadConfigStrict:
             analysis=AnalysisConfig(),
             expert=ExpertConfig(),
         )
-        import ai_pr_review.config as config_module
+        import ai_pr_review.core.config as config_module
         monkeypatch.setattr(config_module, "load_config", lambda **kwargs: invalid_config)
         with pytest.raises(ConfigError):
             load_config_strict()
 
     def test_strict_returns_config_on_valid(self, monkeypatch):
         valid_config = _make_valid_config()
-        import ai_pr_review.config as config_module
+        import ai_pr_review.core.config as config_module
         monkeypatch.setattr(config_module, "load_config", lambda **kwargs: valid_config)
         result = load_config_strict()
         assert result is valid_config

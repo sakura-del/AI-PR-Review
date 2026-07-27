@@ -1,13 +1,13 @@
 """impact_graph 模块测试 — 覆盖闭包遍历、深度限制、上下文构建"""
 import pytest
-from ai_pr_review.impact_graph import (
+from ai_pr_review.core.impact_graph import (
     _collect_all_calls,
     _collect_all_callers,
     _bfs_closure,
     build_impact_subgraph,
     build_impact_graph_context,
 )
-from ai_pr_review.models import (
+from ai_pr_review.core.models import (
     ParsedDiff,
     FileDiff,
     DiffHunk,
@@ -188,7 +188,7 @@ def test_build_impact_graph_context_skips_non_python():
 
 
 def test_build_impact_graph_context_skips_binary():
-    from ai_pr_review.models import FileDiff
+    from ai_pr_review.core.models import FileDiff
     binary_file = FileDiff(
         path="img.png",
         change_type=ChangeType.ADDED,

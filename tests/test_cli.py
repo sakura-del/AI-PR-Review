@@ -11,9 +11,9 @@ from typer.testing import CliRunner
 
 import pytest
 
-from ai_pr_review.cli import app
-from ai_pr_review.config import AppConfig, AIConfig, GitHubConfig, AnalysisConfig, ExpertConfig
-from ai_pr_review.models import (
+from ai_pr_review.cli.cli import app
+from ai_pr_review.core.config import AppConfig, AIConfig, GitHubConfig, AnalysisConfig, ExpertConfig
+from ai_pr_review.core.models import (
     AnalysisResult,
     AnalysisSummary,
     Finding,
@@ -25,8 +25,8 @@ from ai_pr_review.models import (
     ChangeType,
     PRMetadata,
 )
-from ai_pr_review.history import AnalysisRecord
-from ai_pr_review.team_learner import TeamRule, TeamPattern
+from ai_pr_review.data.history import AnalysisRecord
+from ai_pr_review.core.team_learner import TeamRule, TeamPattern
 
 runner = CliRunner()
 
@@ -35,7 +35,7 @@ runner = CliRunner()
 def _isolate_cache_dir():
     """自动隔离缓存目录，避免测试读写真实的 ~/.ai-pr-review/cache/。"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        with patch("ai_pr_review.cache.CACHE_DIR", Path(tmpdir) / "cache"):
+        with patch("ai_pr_review.data.cache.CACHE_DIR", Path(tmpdir) / "cache"):
             yield
 
 PR_URL = "https://github.com/owner/repo/pull/1"
@@ -233,14 +233,14 @@ def _wire_review_patches(
 class TestReviewCommand:
     """review 命令相关测试。"""
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_normal_flow(
         self,
         mock_load_config,
@@ -269,14 +269,14 @@ class TestReviewCommand:
         # 验证保存了历史记录
         mock_save_record.assert_called_once()
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_no_comment_flag(
         self,
         mock_load_config,
@@ -302,14 +302,14 @@ class TestReviewCommand:
         # Commenter.post_review_with_inline_comments 不应被调用
         mocks["commenter"].post_review_with_inline_comments.assert_not_called()
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_severity_medium_filters_low(
         self,
         mock_load_config,
@@ -335,14 +335,14 @@ class TestReviewCommand:
         kwargs = mocks["analyzer"].analyze.call_args.kwargs
         assert kwargs.get("severity_threshold") == "medium"
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_focus_security(
         self,
         mock_load_config,
@@ -368,15 +368,15 @@ class TestReviewCommand:
         kwargs = mocks["analyzer"].analyze.call_args.kwargs
         assert kwargs.get("focus") == ["security"]
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli._run_stream")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli._run_stream")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_stream_output(
         self,
         mock_load_config,
@@ -406,14 +406,14 @@ class TestReviewCommand:
         mocks["analyzer"].analyze_stream.assert_called_once()
         mocks["analyzer"].analyze.assert_not_called()
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_incremental_path(
         self,
         mock_load_config,
@@ -469,14 +469,14 @@ class TestReviewCommand:
         # 输出包含增量提示
         assert "Incremental" in cmd_result.output
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_incremental_no_history_falls_back_to_full(
         self,
         mock_load_config,
@@ -505,14 +505,14 @@ class TestReviewCommand:
         mocks["analyzer"].analyze.assert_called_once()
         mocks["analyzer"].analyze_incremental.assert_not_called()
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_incremental_same_sha_no_changes(
         self,
         mock_load_config,
@@ -564,14 +564,14 @@ class TestReviewCommand:
         # 不应保存记录
         mock_save_record.assert_not_called()
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_large_pr_triggers_sharding(
         self,
         mock_load_config,
@@ -601,14 +601,14 @@ class TestReviewCommand:
         # 输出包含分片提示
         assert "Large PR detected" in cmd_result.output or "sharding" in cmd_result.output
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_no_token_skips_comment(
         self,
         mock_load_config,
@@ -637,14 +637,14 @@ class TestReviewCommand:
         # Commenter.post_review_with_inline_comments 不应被调用
         mocks["commenter"].post_review_with_inline_comments.assert_not_called()
 
-    @patch("ai_pr_review.cli.parse_diff")
-    @patch("ai_pr_review.cli.format_terminal")
-    @patch("ai_pr_review.cli.IncrementalAnalyzer")
-    @patch("ai_pr_review.cli.Commenter")
-    @patch("ai_pr_review.cli.AIAnalyzer")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.save_record")
-    @patch("ai_pr_review.cli.load_config_strict")
+    @patch("ai_pr_review.cli.cli.parse_diff")
+    @patch("ai_pr_review.cli.cli.format_terminal")
+    @patch("ai_pr_review.cli.cli.IncrementalAnalyzer")
+    @patch("ai_pr_review.cli.cli.Commenter")
+    @patch("ai_pr_review.cli.cli.AIAnalyzer")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.save_record")
+    @patch("ai_pr_review.cli.cli.load_config_strict")
     def test_review_diff_fetch_failure_exits_gracefully(
         self,
         mock_load_config,
@@ -686,11 +686,11 @@ class TestReviewCommand:
 class TestLearnCommand:
     """learn 命令相关测试。"""
 
-    @patch("ai_pr_review.cli.save_team_pattern")
-    @patch("ai_pr_review.cli.load_team_pattern")
-    @patch("ai_pr_review.cli.TeamLearner")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.cli.save_team_pattern")
+    @patch("ai_pr_review.cli.cli.load_team_pattern")
+    @patch("ai_pr_review.cli.cli.TeamLearner")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.load_config")
     def test_learn_normal_flow(
         self,
         mock_load_config,
@@ -733,11 +733,11 @@ class TestLearnCommand:
         # 验证输出包含学到的规则数
         assert "Learned 2 team rules" in cmd_result.output
 
-    @patch("ai_pr_review.cli.save_team_pattern")
-    @patch("ai_pr_review.cli.load_team_pattern")
-    @patch("ai_pr_review.cli.TeamLearner")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.cli.save_team_pattern")
+    @patch("ai_pr_review.cli.cli.load_team_pattern")
+    @patch("ai_pr_review.cli.cli.TeamLearner")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.load_config")
     def test_learn_force_flag_relearns(
         self,
         mock_load_config,
@@ -777,11 +777,11 @@ class TestLearnCommand:
         mock_learner.extract_patterns.assert_called_once()
         mock_save_team_pattern.assert_called_once()
 
-    @patch("ai_pr_review.cli.save_team_pattern")
-    @patch("ai_pr_review.cli.load_team_pattern")
-    @patch("ai_pr_review.cli.TeamLearner")
-    @patch("ai_pr_review.cli.GitHubClient")
-    @patch("ai_pr_review.cli.load_config")
+    @patch("ai_pr_review.cli.cli.save_team_pattern")
+    @patch("ai_pr_review.cli.cli.load_team_pattern")
+    @patch("ai_pr_review.cli.cli.TeamLearner")
+    @patch("ai_pr_review.cli.cli.GitHubClient")
+    @patch("ai_pr_review.cli.cli.load_config")
     def test_learn_no_comments_returns_early(
         self,
         mock_load_config,
@@ -820,8 +820,8 @@ class TestLearnCommand:
 class TestHistoryCommand:
     """history 命令相关测试。"""
 
-    @patch("ai_pr_review.cli.format_history_table")
-    @patch("ai_pr_review.cli.load_records")
+    @patch("ai_pr_review.cli.cli.format_history_table")
+    @patch("ai_pr_review.cli.cli.load_records")
     def test_history_normal_display(
         self,
         mock_load_records,
@@ -867,8 +867,8 @@ class TestHistoryCommand:
         if "limit" in kwargs:
             assert kwargs["limit"] == 20
 
-    @patch("ai_pr_review.cli.format_history_table")
-    @patch("ai_pr_review.cli.load_records")
+    @patch("ai_pr_review.cli.cli.format_history_table")
+    @patch("ai_pr_review.cli.cli.load_records")
     def test_history_no_records(
         self,
         mock_load_records,
@@ -885,8 +885,8 @@ class TestHistoryCommand:
         # 不应调用 format_history_table
         mock_format_history_table.assert_not_called()
 
-    @patch("ai_pr_review.cli.format_history_table")
-    @patch("ai_pr_review.cli.load_records")
+    @patch("ai_pr_review.cli.cli.format_history_table")
+    @patch("ai_pr_review.cli.cli.load_records")
     def test_history_respects_limit_flag(
         self,
         mock_load_records,

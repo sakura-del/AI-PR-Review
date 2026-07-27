@@ -2,7 +2,7 @@
 import math
 import re
 import logging
-from ai_pr_review.models import FileDiff
+from ai_pr_review.core.models import FileDiff
 
 logger = logging.getLogger(__name__)
 

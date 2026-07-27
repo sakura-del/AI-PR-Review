@@ -1,7 +1,8 @@
 import re
 import httpx
 from github import Github, GithubException
-from ai_pr_review.models import PRMetadata
+from ai_pr_review.core.models import PRMetadata
+from ai_pr_review.core.retry import RetryConfig, retry_async
 
 
 PR_URL_PATTERN = re.compile(
@@ -53,19 +54,26 @@ class GitHubClient:
             headers["Authorization"] = f"Bearer {self._token}"
         diff_url = f"https://github.com/{owner}/{repo_name}/pull/{number}.diff"
 
-        # 使用 httpx 配置重试策略，等效于原 requests + HTTPAdapter + Retry
-        transport = httpx.HTTPTransport(retries=3)
-        with httpx.Client(transport=transport, timeout=120.0) as client:
-            response = client.get(diff_url, headers=headers)
+        # 业务重试：429/5xx 触发指数退避 + Retry-After；4xx 业务错误立即抛
+        retry_config = RetryConfig(max_retries=3, base_delay=1.0, max_delay=30.0)
+
+        async def _fetch_once(client: httpx.AsyncClient) -> str:
+            response = await client.get(diff_url, headers=headers)
             if response.status_code in (406, 302):
-                headers = {
-                    "Accept": "text/plain",
-                }
+                # 这两个状态码是 GitHub diff 媒体类型协商的正常路径，需要换 Accept 重试
+                fallback_headers = {"Accept": "text/plain"}
                 if self._token:
-                    headers["Authorization"] = f"Bearer {self._token}"
-                response = client.get(diff_url, headers=headers)
+                    fallback_headers["Authorization"] = f"Bearer {self._token}"
+                response = await client.get(diff_url, headers=fallback_headers)
             response.raise_for_status()
             return response.text
+
+        async def _do():
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                return await retry_async(lambda: _fetch_once(client), retry_config)
+
+        import asyncio
+        return asyncio.run(_do())
 
     def get_file_content(self, url: str, file_path: str, ref: str) -> str:
         owner, repo_name, _ = parse_pr_url(url)
@@ -176,17 +184,22 @@ class GitHubClient:
             headers["Authorization"] = f"Bearer {self._token}"
         compare_url = f"https://api.github.com/repos/{owner}/{repo_name}/compare/{base_sha}...{head_sha}"
 
-        # 使用 httpx 配置重试策略，等效于原 requests + HTTPAdapter + Retry
-        transport = httpx.HTTPTransport(retries=3)
-        with httpx.Client(transport=transport, timeout=120.0) as client:
-            response = client.get(compare_url, headers=headers)
-            response.raise_for_status()
+        retry_config = RetryConfig(max_retries=3, base_delay=1.0, max_delay=30.0)
 
-            data = response.json()
-            files = data.get("files", [])
-            diff_parts = []
-            for f in files:
-                if f.get("patch"):
-                    a_path = f.get("filename", "")
-                    diff_parts.append(f"diff --git a/{a_path} b/{a_path}\n{f['patch']}")
-            return "\n".join(diff_parts)
+        async def _do():
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async def _fetch():
+                    response = await client.get(compare_url, headers=headers)
+                    response.raise_for_status()
+                    data = response.json()
+                    files = data.get("files", [])
+                    diff_parts = []
+                    for f in files:
+                        if f.get("patch"):
+                            a_path = f.get("filename", "")
+                            diff_parts.append(f"diff --git a/{a_path} b/{a_path}\n{f['patch']}")
+                    return "\n".join(diff_parts)
+                return await retry_async(_fetch, retry_config)
+
+        import asyncio
+        return asyncio.run(_do())

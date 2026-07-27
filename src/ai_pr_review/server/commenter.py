@@ -1,7 +1,7 @@
 import logging
-from ai_pr_review.github_client import GitHubClient
-from ai_pr_review.models import AnalysisResult, Severity
-from ai_pr_review.formatter import format_github_comment
+from ai_pr_review.platforms.github_client import GitHubClient
+from ai_pr_review.core.models import AnalysisResult, Severity
+from ai_pr_review.core.formatter import format_github_comment
 
 logger = logging.getLogger(__name__)
 

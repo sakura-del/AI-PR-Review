@@ -1,6 +1,6 @@
 """file_priority 模块的单元测试"""
-from ai_pr_review.models import FileDiff, ChangeType
-from ai_pr_review.file_priority import (
+from ai_pr_review.core.models import FileDiff, ChangeType
+from ai_pr_review.core.file_priority import (
     _detect_file_type,
     calculate_priority_score,
     sort_files_by_priority,
