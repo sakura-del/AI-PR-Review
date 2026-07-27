@@ -103,6 +103,17 @@ def create_app(
     if os.path.isdir(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+        # SPA fallback：把 GET / 重定向到 index.html（前端 SPA 入口）
+        # 注意：必须放在 router 注册之后，否则会被 router 的 / 覆盖
+        @app.get("/", include_in_schema=False)
+        async def spa_root():
+            """SPA 入口：返回 index.html"""
+            from fastapi.responses import FileResponse
+            index_path = os.path.join(static_dir, "index.html")
+            if os.path.isfile(index_path):
+                return FileResponse(index_path, media_type="text/html")
+            return {"error": "index.html not found"}
+
     # 注册路由
     from ai_pr_review.server.routes import auth, dashboard, jobs, settings
 

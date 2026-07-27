@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI PR Review Web</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">AI PR Review</div>
+    <nav id="nav" class="nav hidden">
+      <a href="/" data-route="dashboard">Dashboard</a>
+      <a href="/history" data-route="history">History</a>
+      <a href="/jobs" data-route="jobs">Jobs</a>
+      <a href="/settings" data-route="settings">Settings</a>
+      <span id="user-info" class="user"></span>
+      <a href="/auth/logout" id="logout-link">Logout</a>
+    </nav>
+    <a href="/auth/login" id="login-link" class="login-link">Login with GitHub</a>
+  </header>
+
+  <main id="app">
+    <section id="dashboard-view" class="view">
+      <h1>Dashboard</h1>
+      <div class="stats-grid">
+        <div class="stat-card"><div class="label">Total reviews</div><div id="stat-total" class="value">-</div></div>
+        <div class="stat-card"><div class="label">HIGH findings</div><div id="stat-high" class="value">-</div></div>
+        <div class="stat-card"><div class="label">MEDIUM</div><div id="stat-medium" class="value">-</div></div>
+        <div class="stat-card"><div class="label">Avg duration (s)</div><div id="stat-avg-duration" class="value">-</div></div>
+      </div>
+
+      <h2>Submit a PR</h2>
+      <form id="submit-form" class="submit-form">
+        <input id="pr-url" type="url" placeholder="https://github.com/owner/repo/pull/123" required>
+        <button type="submit">Submit Review</button>
+      </form>
+
+      <h2>Recent reviews</h2>
+      <table id="recent-table" class="data-table">
+        <thead><tr><th>Time</th><th>PR</th><th>H</th><th>M</th><th>L</th><th>Duration</th></tr></thead>
+        <tbody id="recent-tbody"><tr><td colspan="6">Loading...</td></tr></tbody>
+      </table>
+    </section>
+
+    <section id="jobs-view" class="view hidden">
+      <h1>Jobs</h1>
+      <table id="jobs-table" class="data-table">
+        <thead><tr><th>ID</th><th>PR</th><th>Status</th><th>Created</th><th>Finished</th></tr></thead>
+        <tbody id="jobs-tbody"><tr><td colspan="5">Loading...</td></tr></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
