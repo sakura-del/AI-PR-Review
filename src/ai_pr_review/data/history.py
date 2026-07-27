@@ -42,6 +42,8 @@ class AnalysisRecord:
     head_sha: str = ""
     base_sha: str = ""
     is_incremental: bool = False
+    # v0.10 多用户隔离：每个用户独立 history（CLI 场景可为空字符串 = 单用户模式）
+    user_id: str = ""
 
     def __post_init__(self):
         if not self.timestamp:
@@ -49,13 +51,15 @@ class AnalysisRecord:
 
 
 def _record_key(record: AnalysisRecord) -> str:
-    """生成 Storage key：{ISO timestamp}__{url_hash}
+    """生成 Storage key：{ISO timestamp}__{user_id}__{url_hash}
 
     ISO 8601 UTC 时间戳字典序 == 时间顺序（前提：所有 timestamp 都是 UTC）。
     url_hash 防止同毫秒内同 PR 多次保存覆盖。
+    user_id 用于多用户隔离（CLI 单用户时为空字符串）。
     """
     url_hash = hashlib.sha1(record.pr_url.encode()).hexdigest()[:8]
-    return f"{record.timestamp}__{url_hash}"
+    # 双下划线分隔：时间戳、user_id、url_hash
+    return f"{record.timestamp}__{record.user_id}__{url_hash}"
 
 
 def _maybe_migrate_from_old(storage) -> None:
@@ -99,22 +103,17 @@ def save_record(record: AnalysisRecord) -> None:
 
     行为：
     - 写入 Storage
-    - 若总数 > MAX_RECORDS，删除最旧的超出条目（key 按字典序）
+    - 若用户总数 > MAX_RECORDS，删除该用户最旧的超出条目
     """
     storage = get_storage()
     key = _record_key(record)
     storage.save(Namespace.HISTORY, key, asdict(record))
 
-    keys = storage.list_keys(Namespace.HISTORY)
-    if len(keys) > MAX_RECORDS:
-        # ISO timestamp 字典序 == 时间顺序，最旧的在前
-        keys.sort()
-        for old_key in keys[: len(keys) - MAX_RECORDS]:
-            storage.delete(Namespace.HISTORY, old_key)
+    _enforce_max_records_for_user(storage, record.user_id)
 
 
 def load_records() -> list[AnalysisRecord]:
-    """加载所有历史记录（按 timestamp 倒序）
+    """加载所有历史记录（按 timestamp 倒序，跨用户）
 
     首次调用时触发一次性迁移（从旧 JSON 文件读取）。
     """
@@ -125,6 +124,50 @@ def load_records() -> list[AnalysisRecord]:
     records = [_parse_record(item) for item in items]
     records.sort(key=lambda r: r.timestamp, reverse=True)
     return records
+
+
+def load_records_for_user(user_id: str) -> list[AnalysisRecord]:
+    """加载指定用户的历史记录（按 timestamp 倒序）
+
+    多用户隔离：每个用户只看自己的 history。
+    CLI 单用户模式：传空字符串返回所有记录。
+    """
+    if not user_id:
+        return load_records()
+
+    storage = get_storage()
+    _maybe_migrate_from_old(storage)
+
+    all_items = storage.list_values(Namespace.HISTORY)
+    records = [_parse_record(item) for item in all_items if item.get("user_id") == user_id]
+    records.sort(key=lambda r: r.timestamp, reverse=True)
+    return records
+
+
+def _enforce_max_records_for_user(storage, user_id: str) -> None:
+    """删除超出 MAX_RECORDS 的最旧记录（按 user 隔离）"""
+    if user_id:
+        # 仅清理该用户的记录（通过 key 前缀匹配）
+        user_prefix = f"__"  # 实际通过 list_values 过滤
+        all_items = storage.list_values(Namespace.HISTORY)
+        user_items = [it for it in all_items if it.get("user_id") == user_id]
+        if len(user_items) > MAX_RECORDS:
+            # 按 timestamp 排序，删最旧的
+            user_items.sort(key=lambda it: it.get("timestamp", ""))
+            excess = len(user_items) - MAX_RECORDS
+            for item in user_items[:excess]:
+                # 通过 timestamp+user_id+url_hash 还原 key
+                ts = item.get("timestamp", "")
+                url_hash = hashlib.sha1(item.get("pr_url", "").encode()).hexdigest()[:8]
+                key = f"{ts}__{user_id}__{url_hash}"
+                storage.delete(Namespace.HISTORY, key)
+    else:
+        # CLI 单用户：清理所有记录
+        keys = storage.list_keys(Namespace.HISTORY)
+        if len(keys) > MAX_RECORDS:
+            keys.sort()
+            for old_key in keys[: len(keys) - MAX_RECORDS]:
+                storage.delete(Namespace.HISTORY, old_key)
 
 
 def _parse_record(item: dict) -> AnalysisRecord:

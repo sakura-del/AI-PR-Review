@@ -25,5 +25,12 @@ RUN pip install --no-cache-dir /tmp/*.whl && \
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# v0.10：默认启动 Web 模式（FastAPI + SPA + OAuth）
+# 设置环境变量后再 docker run
+#   GITHUB_OAUTH_CLIENT_ID
+#   GITHUB_OAUTH_CLIENT_SECRET
+#   SESSION_SECRET_KEY
+EXPOSE 8000
+
 ENTRYPOINT ["ai-pr-review"]
-CMD ["--help"]
+CMD ["serve", "--web", "--host", "0.0.0.0", "--port", "8000"]
