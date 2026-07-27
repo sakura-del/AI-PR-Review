@@ -55,11 +55,11 @@ def test_metrics_endpoint_returns_snapshot(client):
 
 
 def test_auth_router_is_registered(client):
-    """/auth/login 等路由已挂载"""
+    """/auth/login 应重定向到 GitHub OAuth（已实现 M2）"""
     resp = client.get("/auth/login", follow_redirects=False)
-    # 占位返回 200 + todo 字段；M2 实现 OAuth 后会重定向到 GitHub
-    assert resp.status_code == 200
-    assert resp.json().get("todo") == "M2 GitHub OAuth"
+    # 307 重定向到 github.com/oauth/authorize
+    assert resp.status_code == 307
+    assert "github.com" in resp.headers.get("location", "")
 
 
 def test_dashboard_root_registered(client):
