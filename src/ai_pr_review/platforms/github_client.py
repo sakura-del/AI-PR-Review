@@ -1,8 +1,21 @@
+import asyncio
 import re
 import httpx
 from github import Github, GithubException
 from ai_pr_review.core.models import PRMetadata
 from ai_pr_review.core.retry import RetryConfig, retry_async
+
+
+def _run_async(coro):
+    """在独立 event loop 中运行协程（避开 pytest-asyncio 等已有 loop 的场景）
+
+    asyncio.run() 在已有 loop 内会抛 RuntimeError；本方法用 new_event_loop 隔离。
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 PR_URL_PATTERN = re.compile(
@@ -74,8 +87,7 @@ class GitHubClient:
             async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
                 return await retry_async(lambda: _fetch_once(client), retry_config)
 
-        import asyncio
-        return asyncio.run(_do())
+        return _run_async(_do())
 
     def get_file_content(self, url: str, file_path: str, ref: str) -> str:
         owner, repo_name, _ = parse_pr_url(url)
@@ -204,4 +216,4 @@ class GitHubClient:
                 return await retry_async(_fetch, retry_config)
 
         import asyncio
-        return asyncio.run(_do())
+        return _run_async(_do())
