@@ -350,7 +350,7 @@ def review(
                     f"since {last_record.head_sha[:7]}"
                 )
                 with console.status("Analyzing incremental changes..."):
-                    result = asyncio.run(
+                    result = _run_async(
                         analyzer.analyze_incremental(
                             pr_metadata=pr_metadata,
                             incremental_parsed_diff=incremental_parsed,
@@ -375,7 +375,7 @@ def review(
             if multi_agent:
                 console.print(f"🤖 Multi-agent review enabled (adversarial: {not no_adversarial})")
                 with console.status("Analyzing with multi-agent..."):
-                    result = asyncio.run(
+                    result = _run_async(
                         analyzer.analyze_multi_agent(
                             pr_metadata=pr_metadata,
                             parsed_diff=parsed_diff,
@@ -390,7 +390,7 @@ def review(
                     f"sharding analysis..."
                 )
                 with console.status("Analyzing with AI (sharded)..."):
-                    result = asyncio.run(
+                    result = _run_async(
                         analyzer.analyze_with_shards(
                             pr_metadata=pr_metadata,
                             parsed_diff=parsed_diff,
@@ -418,10 +418,10 @@ def review(
                         severity_threshold=severity,
                         focus=focus_list,
                     )
-                result = asyncio.run(_run_stream(gen))
+                result = _run_async(_run_stream(gen))
             else:
                 with console.status("Analyzing with AI..."):
-                    result = asyncio.run(
+                    result = _run_async(
                         analyzer.analyze(
                             pr_metadata=pr_metadata,
                             parsed_diff=parsed_diff,
@@ -505,7 +505,7 @@ def learn(
 
     with console.status("Learning team patterns..."):
         learner = TeamLearner(config)
-        pattern = asyncio.run(learner.extract_patterns(comments))
+        pattern = _run_async(learner.extract_patterns(comments))
 
     pattern.repo_url = pr_url
     save_team_pattern(pattern)
@@ -633,7 +633,7 @@ def serve(
         console.print("  POST /webhook        - GitHub Webhook 入口")
         console.print("\nPress Ctrl+C to stop.\n")
 
-        _asyncio.run(_serve(router, host=host, port=port).serve_forever())
+        _run_async(_serve(router, host=host, port=port).serve_forever())
 
 
 @app.command()
