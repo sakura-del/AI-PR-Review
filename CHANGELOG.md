@@ -1,5 +1,101 @@
 # Changelog
 
+## v0.10.0 (Web 化 MVP)
+
+### Features
+
+#### FastAPI Web 框架
+- **server/web.py** — `create_app()` 工厂，lifespan 管理 JobQueue / Storage 单例
+- **CORS** 默认白名单含 Vite dev server (`localhost:5173`)
+- **lifespan 优雅关闭** — 启动确认 JobQueue，关闭时 graceful shutdown
+- **OpenAPI / Swagger** 自动暴露（`/api/docs`）
+
+#### GitHub OAuth
+- **server/routes/auth.py** — `httpx-oauth` 简化 authorization code flow
+- **scopes** — `read:user` / `user:email` / `repo`
+- **Session cookie** — `itsdangerous` 签名，7 天有效期，httponly + samesite=lax
+- **路由**：
+  - `GET /auth/login` → 重定向到 GitHub 授权
+  - `GET /auth/callback?code=...` → 换 token + 拉 user info + 设 cookie
+  - `POST /auth/logout` → 清 cookie
+  - `GET /auth/me` → 当前用户信息
+- **Dependencies** — `get_current_session`（Optional）/ `require_session`（401 否则）
+- **环境变量** — `GITHUB_OAUTH_CLIENT_ID` / `GITHUB_OAUTH_CLIENT_SECRET` / `SESSION_SECRET_KEY`
+
+#### SPA Dashboard
+- **server/static/index.html / dashboard.css / dashboard.js** — vanilla JS + hash 路由
+- **统计卡片** — total / HIGH / MEDIUM / avg_duration
+- **PR 提交表单** — POST /api/jobs 即时返回 job_id
+- **最近审查表 + 任务列表** — 客户端 fetch /api/* JSON 端点
+- **SPA fallback** — FastAPI `/` 返回 `index.html`，未知路由客户端 hash 路由处理
+
+#### Web API 端点
+- `GET /api/stats` — Dashboard 统计（用户隔离）
+- `GET /api/history?limit=N` — 最近审查记录（按用户过滤）
+- `GET /api/history/me` — 仅当前用户（需登录）
+- `GET /api/jobs?limit=N` — 任务列表
+- `GET /api/jobs/{job_id}` — 任务状态
+- `POST /api/jobs` — 提交 PR 审查（返回 202 + job_id，async）
+- `GET /api/metrics` — 指标快照
+
+#### 多用户隔离
+- **AnalysisRecord.user_id** 字段（CLI 单用户默认 `""`）
+- **`_record_key`** 改为 `{timestamp}__{user_id}__{url_hash}` 格式
+- **`load_records_for_user(user_id)`** — 按用户过滤
+- **`_enforce_max_records_for_user`** — MAX_RECORDS 按用户独立
+
+#### CLI 集成
+- **`ai-pr-review serve --web`** — 启动 FastAPI + uvicorn
+- 默认（无 `--web`）仍走 v0.9 asyncio server（向后兼容）
+- Web 模式端点列表 UI 提示包含 OAuth 环境变量
+
+#### Docker
+- **Dockerfile** 默认 `CMD ["serve", "--web", "--host", "0.0.0.0", "--port", "8000"]`
+- **`EXPOSE 8000`**
+- 部署需设置 OAuth 三个环境变量
+
+### Bug Fixes
+- 修：FastAPI lifespan 中 JobQueue 启动检查逻辑（避免 RuntimeError 被吞）
+- 修：JobQueue 未配置时 `GET /api/jobs/{id}` 返回 503 而非 500
+
+### Tests
+- `test_web_app.py` — 12 个 FastAPI 骨架测试
+- `test_web_auth.py` — 13 个 GitHub OAuth + session 测试
+- `test_web_static.py` — 7 个静态资源 + SPA fallback 测试
+- `test_web_api_dashboard.py` — 11 个 Web API 端点测试
+- `test_user_history.py` — 9 个多用户隔离测试
+- `test_cli_serve_web.py` — 3 个 CLI --web 标志测试
+- **新增 55 个测试**（v0.9 759 → v0.10 814）
+
+### Configuration Changes
+- **新环境变量**：
+  - `GITHUB_OAUTH_CLIENT_ID` — GitHub OAuth App Client ID
+  - `GITHUB_OAUTH_CLIENT_SECRET` — Client Secret
+  - `SESSION_SECRET_KEY` — session cookie 签名密钥（生产必设，dev 有占位）
+- **新依赖**：
+  - `fastapi>=0.110.0`
+  - `uvicorn[standard]>=0.27.0`
+  - `jinja2>=3.1.0`（预留，当前版本用 SPA）
+  - `python-multipart>=0.0.9`
+  - `itsdangerous>=2.1.0`
+  - `httpx-oauth>=0.15.0`
+
+### Migration Notes
+- **CLI 用户**：无需操作，行为完全等同 v0.9
+- **Web 部署**：
+  1. 创建 GitHub OAuth App（https://github.com/settings/developers）
+  2. 设置 callback URL 为 `https://your-domain/auth/callback`
+  3. 配置三个环境变量
+  4. 启动 `ai-pr-review serve --web`
+  5. 浏览器访问 `https://your-domain/`
+
+### 后续（v1.0）
+- VS Code 插件
+- Autofix（AI 生成 patch + commit）
+- Learning 系统（用户反馈闭环）
+
+---
+
 ## v0.9.0 (阶段七：架构加固 + Web 化前置)
 
 ### Features

@@ -168,6 +168,54 @@ ai-pr-review review <pr_url> --rate-limit 3 --log-format json --multi-agent
 | `--force` | `-f` | 强制重新学习，忽略缓存 (learn 子命令) | false |
 | `--rate-limit` | | AI 调用每秒限流（仅多 Agent 与分片路径） | 5 |
 | `--log-format` | | 日志格式 (text/json) | text |
+| `--web` | | **[v0.10]** 启动 FastAPI Web 模式（SPA Dashboard + GitHub OAuth） | false |
+
+### Web 模式（v0.10）
+
+`ai-pr-review serve --web` 启动 FastAPI + uvicorn，提供 Web Dashboard：
+
+```bash
+# 启动 Web 模式（默认 8000 端口）
+ai-pr-review serve --web --host 0.0.0.0 --port 8000
+
+# 浏览器访问 http://localhost:8000/
+# - GitHub OAuth 登录
+# - Dashboard 统计卡片 + 最近审查
+# - 提交 PR 审查任务（异步）
+# - 任务状态查询
+
+# 必填环境变量
+export GITHUB_OAUTH_CLIENT_ID=xxx       # GitHub OAuth App Client ID
+export GITHUB_OAUTH_CLIENT_SECRET=xxx   # Client Secret
+export SESSION_SECRET_KEY=xxx          # session cookie 签名密钥（生产必设）
+```
+
+**Web API 端点：**
+| 路径 | 方法 | 说明 |
+|------|------|------|
+| `/` | GET | SPA Dashboard 入口（index.html） |
+| `/auth/login` | GET | 重定向到 GitHub OAuth |
+| `/auth/callback` | GET | OAuth 回调，设 session cookie |
+| `/auth/me` | GET | 当前用户信息 |
+| `/auth/logout` | POST | 清除 session |
+| `/api/stats` | GET | Dashboard 统计（total/high/medium/avg_duration） |
+| `/api/history?limit=N` | GET | 最近审查记录（按用户隔离） |
+| `/api/jobs` | GET | 任务列表 |
+| `/api/jobs/{id}` | GET | 任务状态 |
+| `/api/jobs` | POST | 提交 PR 审查（返回 202 + job_id） |
+| `/api/health` | GET | 健康检查（含 jobs 计数） |
+| `/api/metrics` | GET | 指标快照（Counter/Histogram/Gauge） |
+| `/api/docs` | GET | Swagger UI |
+
+**Docker 部署：**
+```bash
+docker build -t ai-pr-review .
+docker run --rm -p 8000:8000 \
+  -e GITHUB_OAUTH_CLIENT_ID=xxx \
+  -e GITHUB_OAUTH_CLIENT_SECRET=xxx \
+  -e SESSION_SECRET_KEY=xxx \
+  ai-pr-review  # 默认已带 --web
+```
 
 ## 📁 项目结构
 
