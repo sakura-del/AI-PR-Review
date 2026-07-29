@@ -33,7 +33,7 @@ dev = [
 ]
 
 [project.scripts]
-ai-pr-review = "ai_pr_review.cli:app"
+ai-pr-review = "ai_pr_review.cli.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = [
