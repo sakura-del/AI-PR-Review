@@ -1,0 +1,101 @@
+{
+  "name": "ai-pr-review",
+  "displayName": "AI PR Review",
+  "description": "AI-powered PR review assistant with multi-expert analysis and inline code lens",
+  "version": "1.0.0",
+  "publisher": "sakura-del",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:ai-pr-review.login",
+    "onCommand:ai-pr-review.logout",
+    "onCommand:ai-pr-review.reviewPR",
+    "onCommand:ai-pr-review.showDashboard",
+    "workspaceContains:**/HEAD"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ai-pr-review.login",
+        "title": "AI PR Review: Login to GitHub"
+      },
+      {
+        "command": "ai-pr-review.logout",
+        "title": "AI PR Review: Logout"
+      },
+      {
+        "command": "ai-pr-review.reviewPR",
+        "title": "AI PR Review: Review PR"
+      },
+      {
+        "command": "ai-pr-review.showDashboard",
+        "title": "AI PR Review: Show Dashboard"
+      },
+      {
+        "command": "ai-pr-review.showJob",
+        "title": "AI PR Review: Show Job"
+      }
+    ],
+    "configuration": {
+      "title": "AI PR Review",
+      "properties": {
+        "ai-pr-review.apiBaseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8765",
+          "description": "AI PR Review web backend base URL"
+        },
+        "ai-pr-review.githubToken": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub Personal Access Token (with read+write pull requests scope)"
+        },
+        "ai-pr-review.defaultExpert": {
+          "type": "string",
+          "default": "security",
+          "enum": [
+            "security",
+            "architecture",
+            "performance",
+            "readability",
+            "testing"
+          ],
+          "description": "Default expert when reviewing a single file"
+        }
+      }
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "ai-pr-review.reviewPR",
+          "when": "editorLangId != unoutput"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "vsce package",
+    "test": "node ./out/test/runTest.js",
+    "test:unit": "jest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "typescript": "^5.5.0"
+  }
+}

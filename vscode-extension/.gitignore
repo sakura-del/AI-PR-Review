@@ -1,0 +1,15 @@
+# Build output
+dist/
+out/
+
+# Dependencies
+node_modules/
+
+# Test
+.vscode-test/
+
+# Misc
+*.log
+.DS_Store
+.env
+.env.local
