@@ -58,7 +58,13 @@
         "ai-pr-review.defaultExpert": {
           "type": "string",
           "default": "security",
-          "enum": ["security", "architecture", "performance", "readability", "testing"],
+          "enum": [
+            "security",
+            "architecture",
+            "performance",
+            "readability",
+            "testing"
+          ],
           "description": "Default expert when reviewing a single file"
         }
       }
@@ -77,15 +83,19 @@
     "watch": "node esbuild.js --watch",
     "package": "vsce package",
     "test": "node ./out/test/runTest.js",
+    "test:unit": "jest",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.24.0",
-    "typescript": "^5.5.0",
-    "@vscode/vsce": "^3.0.0"
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "typescript": "^5.5.0"
   }
 }
