@@ -30,26 +30,30 @@ from ai_pr_review.data.team_rules import save_team_pattern, load_team_pattern
 
 
 def _run_async(coro):
-    """在隔离的 event loop 中运行协程
+    """运行协程，兼容同步和异步上下文
 
-    - 同步 CLI 入口（无 loop）：asyncio.run
-    - 已在 async 上下文（web 测试/JobQueue worker）：new_event_loop 隔离
+    - 同步 CLI 入口（无 running loop）：asyncio.run
+    - 已在 async 上下文（web/JobQueue worker）：新线程 + asyncio.run
     """
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        # 无 running loop，用 asyncio.run
         return asyncio.run(coro)
 
-    # 已有 running loop（如 pytest-asyncio 测试或 uvicorn worker 调 CLI）：
-    # 用独立 event loop 隔离避免 RuntimeError
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
-
-
+    # 已有 running loop：在新线程中跑 asyncio.run（独立 event loop）
+    import threading
+    box = {}
+    def _worker():
+        try:
+            box["r"] = asyncio.run(coro)
+        except BaseException as e:
+            box["e"] = e
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join()
+    if "e" in box:
+        raise box["e"]
+    return box["r"]
 async def _run_stream(stream_gen):
     result = None
     async for chunk in stream_gen:

@@ -7,17 +7,30 @@ from ai_pr_review.core.retry import RetryConfig, retry_async
 
 
 def _run_async(coro):
-    """在独立 event loop 中运行协程（避开 pytest-asyncio 等已有 loop 的场景）
+    """运行协程，兼容同步和异步上下文
 
-    asyncio.run() 在已有 loop 内会抛 RuntimeError；本方法用 new_event_loop 隔离。
+    - 同步 CLI 入口（无 running loop）：asyncio.run
+    - 已在 async 上下文（web/JobQueue worker）：新线程 + asyncio.run
     """
-    loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
 
-
+    # 已有 running loop：在新线程中跑 asyncio.run（独立 event loop）
+    import threading
+    box = {}
+    def _worker():
+        try:
+            box["r"] = asyncio.run(coro)
+        except BaseException as e:
+            box["e"] = e
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join()
+    if "e" in box:
+        raise box["e"]
+    return box["r"]
 PR_URL_PATTERN = re.compile(
     r"https?://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>\d+)"
 )
