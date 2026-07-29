@@ -40,6 +40,14 @@
       {
         "command": "ai-pr-review.showJob",
         "title": "AI PR Review: Show Job"
+      },
+      {
+        "command": "ai-pr-review.detectPR",
+        "title": "AI PR Review: Detect PR from current branch"
+      },
+      {
+        "command": "ai-pr-review.clearContext",
+        "title": "AI PR Review: Clear CodeLens Context"
       }
     ],
     "configuration": {
