@@ -28,6 +28,32 @@ from ai_pr_review.core.incremental import IncrementalAnalyzer
 from ai_pr_review.core.team_learner import TeamLearner
 from ai_pr_review.data.team_rules import save_team_pattern, load_team_pattern
 
+
+def _run_async(coro):
+    """运行协程，兼容同步和异步上下文
+
+    - 同步 CLI 入口（无 running loop）：asyncio.run
+    - 已在 async 上下文（web/JobQueue worker）：新线程 + asyncio.run
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    # 已有 running loop：在新线程中跑 asyncio.run（独立 event loop）
+    import threading
+    box = {}
+    def _worker():
+        try:
+            box["r"] = asyncio.run(coro)
+        except BaseException as e:
+            box["e"] = e
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join()
+    if "e" in box:
+        raise box["e"]
+    return box["r"]
 async def _run_stream(stream_gen):
     result = None
     async for chunk in stream_gen:
@@ -328,7 +354,7 @@ def review(
                     f"since {last_record.head_sha[:7]}"
                 )
                 with console.status("Analyzing incremental changes..."):
-                    result = asyncio.run(
+                    result = _run_async(
                         analyzer.analyze_incremental(
                             pr_metadata=pr_metadata,
                             incremental_parsed_diff=incremental_parsed,
@@ -353,7 +379,7 @@ def review(
             if multi_agent:
                 console.print(f"🤖 Multi-agent review enabled (adversarial: {not no_adversarial})")
                 with console.status("Analyzing with multi-agent..."):
-                    result = asyncio.run(
+                    result = _run_async(
                         analyzer.analyze_multi_agent(
                             pr_metadata=pr_metadata,
                             parsed_diff=parsed_diff,
@@ -368,7 +394,7 @@ def review(
                     f"sharding analysis..."
                 )
                 with console.status("Analyzing with AI (sharded)..."):
-                    result = asyncio.run(
+                    result = _run_async(
                         analyzer.analyze_with_shards(
                             pr_metadata=pr_metadata,
                             parsed_diff=parsed_diff,
@@ -396,10 +422,10 @@ def review(
                         severity_threshold=severity,
                         focus=focus_list,
                     )
-                result = asyncio.run(_run_stream(gen))
+                result = _run_async(_run_stream(gen))
             else:
                 with console.status("Analyzing with AI..."):
-                    result = asyncio.run(
+                    result = _run_async(
                         analyzer.analyze(
                             pr_metadata=pr_metadata,
                             parsed_diff=parsed_diff,
@@ -483,7 +509,7 @@ def learn(
 
     with console.status("Learning team patterns..."):
         learner = TeamLearner(config)
-        pattern = asyncio.run(learner.extract_patterns(comments))
+        pattern = _run_async(learner.extract_patterns(comments))
 
     pattern.repo_url = pr_url
     save_team_pattern(pattern)
@@ -611,7 +637,7 @@ def serve(
         console.print("  POST /webhook        - GitHub Webhook 入口")
         console.print("\nPress Ctrl+C to stop.\n")
 
-        _asyncio.run(_serve(router, host=host, port=port).serve_forever())
+        _run_async(_serve(router, host=host, port=port).serve_forever())
 
 
 @app.command()
