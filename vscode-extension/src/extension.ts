@@ -15,6 +15,7 @@ import { ApiClient } from './api/client';
 import { loginCommand, logoutCommand, showUserCommand } from './commands/auth';
 import { reviewPRCommand, showJobCommand } from './commands/review';
 import { showDashboardCommand } from './commands/dashboard';
+import { detectPrCommand, clearContextCommand } from './commands/detect';
 import { getApiBaseUrl, getGithubToken } from './config';
 import {
   AiPrReviewCodeLensProvider,
@@ -68,6 +69,12 @@ export function activate(context: vscode.ExtensionContext) {
     ),
     vscode.commands.registerCommand('ai-pr-review.setReviewContext', (job, prUrl) =>
       setReviewContext(job, prUrl)
+    ),
+    vscode.commands.registerCommand('ai-pr-review.detectPR', () =>
+      detectPrCommand(api, outputChannel)
+    ),
+    vscode.commands.registerCommand('ai-pr-review.clearContext', () =>
+      clearContextCommand()
     ),
 
     // 监听配置变更
