@@ -45,6 +45,12 @@ export async function reviewPRCommand(
           const j: Job = await api.getJob(job.job_id);
           if (j.status === 'succeeded') {
             await showResultWebview(prUrl, j);
+            // 激活 CodeLens（让编辑器里出现 finding 提示）
+            await vscode.commands.executeCommand(
+              'ai-pr-review.setReviewContext',
+              j,
+              prUrl
+            );
             return;
           }
           if (j.status === 'failed') {

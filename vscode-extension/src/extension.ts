@@ -16,6 +16,11 @@ import { loginCommand, logoutCommand, showUserCommand } from './commands/auth';
 import { reviewPRCommand, showJobCommand } from './commands/review';
 import { showDashboardCommand } from './commands/dashboard';
 import { getApiBaseUrl, getGithubToken } from './config';
+import {
+  AiPrReviewCodeLensProvider,
+  setReviewContext,
+  showFindingDetailCommand,
+} from './providers/codelens';
 
 let outputChannel: vscode.OutputChannel;
 
@@ -28,6 +33,15 @@ export function activate(context: vscode.ExtensionContext) {
     baseUrl: getApiBaseUrl(),
     token: getGithubToken() || undefined,
   });
+
+  // 注册 CodeLens provider（M4）
+  const codelensProvider = new AiPrReviewCodeLensProvider(api);
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(
+      { pattern: '**/*' },
+      codelensProvider
+    )
+  );
 
   // 注册命令
   context.subscriptions.push(
@@ -48,6 +62,12 @@ export function activate(context: vscode.ExtensionContext) {
     ),
     vscode.commands.registerCommand('ai-pr-review.showDashboard', () =>
       showDashboardCommand(context, api, outputChannel)
+    ),
+    vscode.commands.registerCommand('ai-pr-review.showFindingDetail', (finding) =>
+      showFindingDetailCommand(finding)
+    ),
+    vscode.commands.registerCommand('ai-pr-review.setReviewContext', (job, prUrl) =>
+      setReviewContext(job, prUrl)
     ),
 
     // 监听配置变更
