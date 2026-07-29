@@ -166,8 +166,29 @@ h2 { font-size: 18px; margin: 24px 0 12px; color: #334155; }
   color: #991b1b;
   padding: 12px 16px;
   border-radius: 6px;
-  margin-bottom: 16px;
+  margin: 12px 24px;
+  font-size: 14px;
   display: none;
+  border: 1px solid #fecaca;
 }
 
 .error-banner.visible { display: block; }
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-pending  { background: #fef3c7; color: #92400e; }
+.status-running  { background: #dbeafe; color: #1e40af; }
+.status-succeeded { background: #d1fae5; color: #065f46; }
+.status-failed   { background: #fee2e2; color: #991b1b; }
+.status-cancelled { background: #f3f4f6; color: #4b5563; }
+
+.job-error { color: #dc2626; font-size: 12px; }
+
+.muted { color: #94a3b8; font-weight: normal; font-size: 14px; }

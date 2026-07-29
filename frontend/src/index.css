@@ -1,0 +1,15 @@
+/* AI PR Review Frontend 基础样式 */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f8fafc;
+  color: #1e293b;
+  line-height: 1.5;
+}
+
+button { font-family: inherit; cursor: pointer; }
+
+a { color: #2563eb; text-decoration: none; }
+a:hover { text-decoration: underline; }
