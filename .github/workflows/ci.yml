@@ -31,7 +31,7 @@ jobs:
 
       - name: Run tests with pytest
         run: |
-          pytest --cov=ai_pr_review --cov-report=xml --cov-report=term
+          pytest --cov=ai_pr_review --cov-report=xml --cov-report=term -v --tb=short 2>&1 | tee pytest.log
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -39,3 +39,10 @@ jobs:
           name: coverage-report-${{ matrix.python-version }}
           path: coverage.xml
         if: always()
+
+      - name: Upload pytest log on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: pytest-log-${{ matrix.python-version }}
+          path: pytest.log
